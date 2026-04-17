@@ -1,7 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Pill } from "@/components/musilearn/Pill";
+import { formatAuthError } from "@/lib/authMessages";
+import { getFirebaseAuth } from "@/lib/firebase";
+import { createUserFirestoreDoc } from "@/lib/musilearnFirestore";
+import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
+import { toast } from "sonner";
 
 type Search = { role?: "learner" | "instructor" };
 
@@ -20,16 +25,61 @@ function SignupPage() {
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (role === "instructor") nav({ to: "/onboarding" });
-    else nav({ to: "/app" });
+    const fullName = name.trim();
+    const mail = email.trim();
+    if (!fullName || !mail) {
+      toast.error("Enter your name and email.");
+      return;
+    }
+    if (pw.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    if (pw !== pw2) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+
+    setBusy(true);
+    const auth = getFirebaseAuth();
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, mail, pw);
+      try {
+        await createUserFirestoreDoc(cred.user.uid, {
+          role,
+          fullName,
+          email: mail,
+        });
+      } catch (firestoreErr) {
+        try {
+          await deleteUser(cred.user);
+        } catch {
+          /* best effort */
+        }
+        toast.error(formatAuthError(firestoreErr));
+        return;
+      }
+
+      toast.success("Account created");
+      if (role === "instructor") nav({ to: "/onboarding", replace: true });
+      else nav({ to: "/app", replace: true });
+    } catch (err) {
+      toast.error(formatAuthError(err));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 py-8">
-      <Link to="/" className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-hairline">
+      <Link
+        to="/"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-hairline"
+      >
         <ArrowLeft className="h-4 w-4" />
       </Link>
 
@@ -41,13 +91,25 @@ function SignupPage() {
         <p className="mt-1 text-sm text-muted-foreground">It takes less than a minute.</p>
       </div>
 
-      <form onSubmit={submit} className="mt-8 space-y-3">
+      <form onSubmit={(e) => void submit(e)} className="mt-8 space-y-3">
         <Field label="Full name" value={name} onChange={setName} type="text" autoComplete="name" />
         <Field label="Email" value={email} onChange={setEmail} type="email" autoComplete="email" />
-        <Field label="Password" value={pw} onChange={setPw} type="password" autoComplete="new-password" />
-        <Field label="Confirm password" value={pw2} onChange={setPw2} type="password" autoComplete="new-password" />
-        <Pill type="submit" size="lg" className="mt-4 w-full">
-          Continue
+        <Field
+          label="Password"
+          value={pw}
+          onChange={setPw}
+          type="password"
+          autoComplete="new-password"
+        />
+        <Field
+          label="Confirm password"
+          value={pw2}
+          onChange={setPw2}
+          type="password"
+          autoComplete="new-password"
+        />
+        <Pill type="submit" size="lg" className="mt-4 w-full" disabled={busy}>
+          {busy ? "Creating account…" : "Continue"}
         </Pill>
       </form>
 
@@ -76,7 +138,9 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11px] uppercase tracking-widest text-muted-foreground">{label}</span>
+      <span className="mb-1 block text-[11px] uppercase tracking-widest text-muted-foreground">
+        {label}
+      </span>
       <input
         type={type}
         value={value}

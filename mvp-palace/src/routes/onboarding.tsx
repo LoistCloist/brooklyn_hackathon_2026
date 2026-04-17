@@ -1,8 +1,18 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Pill } from "@/components/musilearn/Pill";
 import { Chip } from "@/components/musilearn/Chip";
-import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  getInstructorDoc,
+  instructorOnboardingComplete,
+  saveInstructorOnboarding,
+  specialtyToSlug,
+  uploadInstructorAvatar,
+} from "@/lib/musilearnFirestore";
+import { getFirebaseAuth } from "@/lib/firebase";
 import { Camera } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({ meta: [{ title: "Set up your profile — MusiLearn" }] }),
@@ -13,6 +23,8 @@ const SPECIALTIES = ["Voice", "Guitar", "Piano", "Saxophone", "Violin", "Drums",
 
 function Onboarding() {
   const nav = useNavigate();
+  const { user, userDoc, loading, refreshUserDoc } = useAuth();
+  const fileRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
@@ -20,10 +32,141 @@ function Onboarding() {
   const [rate, setRate] = useState("");
   const [specs, setSpecs] = useState<string[]>([]);
   const [bio, setBio] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      void nav({ to: "/login", replace: true });
+      return;
+    }
+    if (userDoc && userDoc.role !== "instructor") {
+      void nav({ to: "/app", replace: true });
+      return;
+    }
+  }, [loading, user, userDoc, nav]);
+
+  useEffect(() => {
+    if (userDoc?.fullName) setName((prev) => prev || userDoc.fullName);
+  }, [userDoc]);
+
+  useEffect(() => {
+    if (!user || loading) return;
+    void getInstructorDoc(user.uid).then((inst) => {
+      if (instructorOnboardingComplete(inst)) void nav({ to: "/app", replace: true });
+    });
+  }, [user, loading, nav]);
+
+  function onPickAvatar(f: File | null) {
+    setAvatarFile(f);
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    setAvatarPreview(f ? URL.createObjectURL(f) : null);
+  }
+
+  async function completeProfile() {
+    const auth = getFirebaseAuth();
+    const u = auth.currentUser;
+    if (!u || !userDoc) {
+      toast.error("Session expired. Log in again.");
+      return;
+    }
+    const ageN = Number.parseInt(age, 10);
+    const yrsN = Number.parseInt(yrs, 10);
+    const rateRaw = rate.trim();
+    const hourlyRate = rateRaw === "" ? 0 : Number.parseFloat(rateRaw);
+    if (!name.trim()) {
+      toast.error("Enter your full name.");
+      return;
+    }
+    if (!Number.isFinite(ageN) || ageN < 13 || ageN > 120) {
+      toast.error("Enter a valid age.");
+      return;
+    }
+    if (!Number.isFinite(yrsN) || yrsN < 0 || yrsN > 80) {
+      toast.error("Enter valid years of experience.");
+      return;
+    }
+    if (!Number.isFinite(hourlyRate) || hourlyRate < 0) {
+      toast.error("Enter a valid hourly rate (0 for free).");
+      return;
+    }
+    if (specs.length === 0) {
+      toast.error("Pick at least one specialty.");
+      return;
+    }
+    if (!bio.trim()) {
+      toast.error("Add a short bio.");
+      return;
+    }
+
+    setSaving(true);
+    let avatarUrl = "";
+    if (avatarFile) {
+      try {
+        avatarUrl = await uploadInstructorAvatar(u.uid, avatarFile);
+      } catch {
+        toast.error(
+          "Photo upload failed. Continuing without a photo — check Storage rules in Firebase.",
+        );
+      }
+    }
+
+    try {
+      await saveInstructorOnboarding(u.uid, {
+        fullName: name.trim(),
+        avatarUrl,
+        age: ageN,
+        experienceYears: yrsN,
+        specialties: specs.map(specialtyToSlug),
+        bio: bio.trim(),
+        hourlyRate,
+      });
+      await refreshUserDoc();
+      toast.success("Profile saved");
+      void nav({ to: "/app", replace: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not save profile.";
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function next() {
-    if (step < 2) setStep(step + 1);
-    else nav({ to: "/app" });
+    if (step === 0) {
+      if (!name.trim()) {
+        toast.error("Enter your name.");
+        return;
+      }
+      setStep(1);
+      return;
+    }
+    if (step === 1) {
+      const ageN = Number.parseInt(age, 10);
+      const yrsN = Number.parseInt(yrs, 10);
+      const rateRaw = rate.trim();
+      const hourlyRate = rateRaw === "" ? 0 : Number.parseFloat(rateRaw);
+      if (!Number.isFinite(ageN) || ageN < 13) {
+        toast.error("Enter a valid age.");
+        return;
+      }
+      if (!Number.isFinite(yrsN) || yrsN < 0) {
+        toast.error("Enter years of experience.");
+        return;
+      }
+      if (!Number.isFinite(hourlyRate) || hourlyRate < 0) {
+        toast.error("Enter a valid hourly rate (or leave blank for free).");
+        return;
+      }
+      if (specs.length === 0) {
+        toast.error("Pick at least one specialty.");
+        return;
+      }
+      setStep(2);
+      return;
+    }
   }
 
   return (
@@ -46,8 +189,23 @@ function Onboarding() {
             <h2 className="text-2xl font-bold tracking-tight">Your profile</h2>
             <p className="mt-1 text-sm text-muted-foreground">A photo and your name.</p>
             <div className="mt-8 flex flex-col items-center gap-4">
-              <button className="flex h-28 w-28 items-center justify-center rounded-full border border-dashed border-hairline bg-surface text-muted-foreground hover:border-foreground hover:text-foreground">
-                <Camera className="h-7 w-7" />
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => onPickAvatar(e.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border border-dashed border-hairline bg-surface text-muted-foreground hover:border-foreground hover:text-foreground"
+              >
+                {avatarPreview ? (
+                  <img src={avatarPreview} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <Camera className="h-7 w-7" />
+                )}
               </button>
               <input
                 value={name}
@@ -79,7 +237,9 @@ function Onboarding() {
                 className="h-12 rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground"
               />
             </div>
-            <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">Specialties</p>
+            <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
+              Specialties
+            </p>
             <div className="flex flex-wrap gap-2">
               {SPECIALTIES.map((s) => {
                 const active = specs.includes(s);
@@ -87,9 +247,7 @@ function Onboarding() {
                   <Chip
                     key={s}
                     active={active}
-                    onClick={() =>
-                      setSpecs((v) => (active ? v.filter((x) => x !== s) : [...v, s]))
-                    }
+                    onClick={() => setSpecs((v) => (active ? v.filter((x) => x !== s) : [...v, s]))}
                   >
                     {s}
                   </Chip>
@@ -99,7 +257,7 @@ function Onboarding() {
             <input
               value={rate}
               onChange={(e) => setRate(e.target.value)}
-              inputMode="numeric"
+              inputMode="decimal"
               placeholder="Hourly rate ($) — leave blank if free"
               className="mt-6 h-12 w-full rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground"
             />
@@ -123,8 +281,16 @@ function Onboarding() {
         )}
       </div>
 
-      <Pill size="lg" className="w-full" onClick={next}>
-        {step === 2 ? "Complete profile" : "Continue"}
+      <Pill
+        size="lg"
+        className="w-full"
+        disabled={saving}
+        onClick={() => {
+          if (step < 2) next();
+          else void completeProfile();
+        }}
+      >
+        {step === 2 ? (saving ? "Saving…" : "Complete profile") : "Continue"}
       </Pill>
     </div>
   );
