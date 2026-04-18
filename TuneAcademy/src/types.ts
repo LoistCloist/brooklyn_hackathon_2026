@@ -43,3 +43,23 @@ export interface ChatMessage {
   text: string;
   createdAt: Timestamp;
 }
+
+export interface AnalysisReport {
+  id: string;
+  userId: string;
+  instrument: string;
+  challenge: string;
+  status: "pending" | "done" | "error";
+  overall_score?: number;
+  dimension_scores?: {
+    pitch_centre: number;
+    pitch_stability: number;
+    rhythm: number;
+    tone_quality: number;
+    note_attack: number;
+  };
+  weaknesses?: string[];
+  error?: string;
+  createdAt: Timestamp;
+  analyzedAt?: Timestamp;
+}

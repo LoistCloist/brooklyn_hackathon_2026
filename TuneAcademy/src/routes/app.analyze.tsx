@@ -4,9 +4,12 @@ import { Card } from "@/components/tuneacademy/Card";
 import { Pill } from "@/components/tuneacademy/Pill";
 import { InstrumentIcon } from "@/components/tuneacademy/InstrumentIcon";
 import { challenges } from "@/lib/mockData";
+import { useUploadRecording } from "@/hooks/useUploadRecording";
 import { Mic, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
+import { Progress } from "@/components/ui/progress";
 
 export const Route = createFileRoute("/app/analyze")({
   head: () => ({ meta: [{ title: "Analyze — TuneAcademy" }] }),
@@ -15,34 +18,154 @@ export const Route = createFileRoute("/app/analyze")({
 
 type ChallengeKey = keyof typeof challenges;
 
+// ── WAV encoding ──────────────────────────────────────────────────────────────
+
+function writeString(view: DataView, offset: number, str: string) {
+  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+}
+
+function encodeWav(samples: Float32Array, sampleRate: number): Blob {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buf);
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);        // PCM
+  view.setUint16(22, 1, true);        // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    off += 2;
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 function AnalyzeTab() {
   const [picked, setPicked] = useState<ChallengeKey | null>(null);
   const [recording, setRecording] = useState(false);
-  const [hasRecording, setHasRecording] = useState(false);
+  const [wavBlob, setWavBlob] = useState<Blob | null>(null);
+  const [wavUrl, setWavUrl] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
+  const [micError, setMicError] = useState<string | null>(null);
+
   const timerRef = useRef<number | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const wavUrlRef = useRef<string | null>(null);
+
+  const { uploadRecording, progress, uploading } = useUploadRecording();
   const nav = useNavigate();
 
   useEffect(() => {
     if (recording) {
       timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-    return () => {
+    } else {
       if (timerRef.current) clearInterval(timerRef.current);
-    };
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [recording]);
 
-  function toggle() {
-    if (recording) {
-      setRecording(false);
-      setHasRecording(true);
-    } else {
-      setSeconds(0);
-      setHasRecording(false);
-      setRecording(true);
+  useEffect(() => {
+    return () => {
+      if (wavUrlRef.current) URL.revokeObjectURL(wavUrlRef.current);
+      mediaRecorderRef.current?.stop();
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  async function startRecording() {
+    setMicError(null);
+    if (wavUrlRef.current) { URL.revokeObjectURL(wavUrlRef.current); wavUrlRef.current = null; }
+    setWavBlob(null);
+    setWavUrl(null);
+    chunksRef.current = [];
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch {
+      setMicError("Microphone access denied. Allow mic permission and try again.");
+      return;
     }
+
+    streamRef.current = stream;
+    const mr = new MediaRecorder(stream);
+    mediaRecorderRef.current = mr;
+
+    mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+    mr.onstop = async () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      const rawBlob = new Blob(chunksRef.current, { type: mr.mimeType });
+      const arrayBuf = await rawBlob.arrayBuffer();
+      const ctx = new AudioContext();
+      const audioBuf = await ctx.decodeAudioData(arrayBuf);
+      void ctx.close();
+
+      // Mix down to mono
+      const numCh = audioBuf.numberOfChannels;
+      const mono = new Float32Array(audioBuf.length);
+      for (let ch = 0; ch < numCh; ch++) {
+        const data = audioBuf.getChannelData(ch);
+        for (let i = 0; i < audioBuf.length; i++) mono[i] += data[i] / numCh;
+      }
+
+      const blob = encodeWav(mono, audioBuf.sampleRate);
+      const url = URL.createObjectURL(blob);
+      wavUrlRef.current = url;
+      setWavBlob(blob);
+      setWavUrl(url);
+    };
+
+    mr.start();
+    setSeconds(0);
+    setRecording(true);
+  }
+
+  function stopRecording() {
+    setRecording(false);
+    mediaRecorderRef.current?.stop();
+  }
+
+  function toggle() {
+    if (recording) stopRecording();
+    else void startRecording();
+  }
+
+  async function submit() {
+    if (!wavBlob || !picked) return;
+    const c = challenges[picked];
+    try {
+      const reportId = await uploadRecording({
+        wavBlob,
+        instrument: c.instrument,
+        challenge: c.text,
+      });
+      nav({ to: "/app/analyze/result", search: { reportId } });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed.");
+    }
+  }
+
+  function reset() {
+    setPicked(null);
+    if (wavUrlRef.current) { URL.revokeObjectURL(wavUrlRef.current); wavUrlRef.current = null; }
+    setWavBlob(null);
+    setWavUrl(null);
+    setRecording(false);
+    setSeconds(0);
+    setMicError(null);
   }
 
   return (
@@ -81,7 +204,7 @@ function AnalyzeTab() {
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Challenge</p>
             <p className="mt-2 text-lg font-semibold leading-snug">{challenges[picked].text}</p>
             <button
-              onClick={() => { setPicked(null); setHasRecording(false); setRecording(false); }}
+              onClick={reset}
               className="mt-3 text-xs text-muted-foreground underline underline-offset-4"
             >
               Change instrument
@@ -94,13 +217,18 @@ function AnalyzeTab() {
               {String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}
             </p>
             <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
-              {recording ? "Recording" : hasRecording ? "Stopped" : "Ready"}
+              {recording ? "Recording" : wavUrl ? "Stopped" : "Ready"}
             </p>
+
+            {micError && (
+              <p className="mt-3 text-center text-xs text-destructive">{micError}</p>
+            )}
 
             <button
               onClick={toggle}
+              disabled={uploading}
               aria-label={recording ? "Stop" : "Record"}
-              className="relative mt-8 flex h-24 w-24 items-center justify-center rounded-full bg-foreground text-background shadow-elevated transition-transform active:scale-95"
+              className="relative mt-8 flex h-24 w-24 items-center justify-center rounded-full bg-foreground text-background shadow-elevated transition-transform active:scale-95 disabled:opacity-50"
             >
               {recording && (
                 <motion.div
@@ -112,10 +240,28 @@ function AnalyzeTab() {
               {recording ? <Square className="h-7 w-7 fill-background" /> : <Mic className="h-8 w-8" />}
             </button>
 
-            {hasRecording && !recording && (
-              <Pill className="mt-8 w-full" size="lg" onClick={() => nav({ to: "/app/analyze/result" })}>
-                Submit recording
-              </Pill>
+            {wavUrl && !recording && (
+              <div className="mt-8 w-full space-y-3">
+                <p className="text-center text-xs uppercase tracking-widest text-muted-foreground">
+                  Listen back
+                </p>
+                <audio src={wavUrl} controls className="w-full rounded-lg" />
+
+                {uploading ? (
+                  <div className="space-y-2">
+                    <Progress value={Math.round(progress * 100)} />
+                    <p className="text-center text-xs text-muted-foreground">Uploading…</p>
+                  </div>
+                ) : (
+                  <Pill
+                    size="lg"
+                    className="w-full"
+                    onClick={() => void submit()}
+                  >
+                    Submit recording
+                  </Pill>
+                )}
+              </div>
             )}
           </div>
         </div>
