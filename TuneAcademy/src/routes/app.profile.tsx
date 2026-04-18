@@ -12,24 +12,28 @@ import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
 import { InstructorWeeklyAvailabilityEditor } from "@/components/tuneacademy/InstructorWeeklyAvailabilityEditor";
 import { dedupeWeeklySlots, type WeeklyTimeSlot } from "@/lib/scheduling";
 import {
-  getInstructorDoc,
   LEARNER_BIO_MAX_CHARS,
+  type InstructorFirestoreDoc,
+  updateInstructorProfileBasics,
   updateInstructorScheduleSettings,
   updateLearnerBio,
 } from "@/lib/tuneacademyFirestore";
+import { formatSpecialtyLabel } from "@/hooks/useInstructorsDirectory";
 import {
   collection,
+  doc,
   getDocs,
   limit,
+  onSnapshot,
   query,
   where,
 } from "firebase/firestore";
 import { getDownloadURL, ref } from "firebase/storage";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Flame, Music, Star, Clock,
-  Users, BookOpen, MapPin, DollarSign, Edit3, Mic, ChevronDown, ChevronUp, LogOut,
+  Users, BookOpen, MapPin, Edit3, Mic, ChevronDown, ChevronUp, LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -78,6 +82,51 @@ type RecordingRow = {
   audioUrl?: string;
 };
 
+function InstructorStarRating({
+  averageOutOf5,
+  reviewCount,
+}: {
+  averageOutOf5: number;
+  reviewCount: number;
+}) {
+  const r = Math.max(0, Math.min(5, averageOutOf5));
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-0.5" aria-label={`Average rating ${r.toFixed(1)} out of 5`}>
+          {[0, 1, 2, 3, 4].map((i) => {
+            const fill = Math.min(1, Math.max(0, r - i));
+            return (
+              <span key={i} className="relative h-7 w-7 shrink-0">
+                <Star
+                  className="absolute inset-0 h-7 w-7 text-[#fffdf5]/18"
+                  strokeWidth={1.35}
+                  aria-hidden
+                />
+                <span
+                  className="absolute inset-0 overflow-hidden"
+                  style={{ width: `${fill * 100}%` }}
+                  aria-hidden
+                >
+                  <Star className="h-7 w-7 fill-[#ffd666] text-[#ffd666]" strokeWidth={0} />
+                </span>
+              </span>
+            );
+          })}
+        </div>
+        <span className="text-sm font-semibold tabular-nums text-[#e8f4df]/70">
+          {reviewCount > 0 ? `${r.toFixed(1)} / 5` : "—"}
+        </span>
+      </div>
+      <p className="text-xs text-[#e8f4df]/50">
+        {reviewCount === 0
+          ? "No ratings yet — reviews from learners appear here."
+          : `${reviewCount} rating${reviewCount === 1 ? "" : "s"}`}
+      </p>
+    </div>
+  );
+}
+
 function ProfileTab() {
   const nav = useNavigate();
   const search = Route.useSearch();
@@ -114,22 +163,75 @@ function ProfileTab() {
   const [scheduleSlots, setScheduleSlots] = useState<WeeklyTimeSlot[]>([]);
   const [scheduleMaxWeeks, setScheduleMaxWeeks] = useState("8");
   const [scheduleSaving, setScheduleSaving] = useState(false);
-  const [scheduleLoaded, setScheduleLoaded] = useState(false);
+  const [instructorDoc, setInstructorDoc] = useState<InstructorFirestoreDoc | null>(null);
+  const [instructorSnapReady, setInstructorSnapReady] = useState(false);
+
+  const [instructorBasicsEditing, setInstructorBasicsEditing] = useState(false);
+  const [instructorBasicsDraft, setInstructorBasicsDraft] = useState({
+    hourlyRate: "",
+    nationality: "",
+    experienceYears: "",
+  });
+  const [instructorBasicsSaving, setInstructorBasicsSaving] = useState(false);
 
   useEffect(() => {
-    if (!user?.uid || !isInstructor) return;
-    setScheduleLoaded(false);
-    void getInstructorDoc(user.uid)
-      .then((inst) => {
-        if (inst?.weeklyAvailability?.length) setScheduleSlots(inst.weeklyAvailability);
-        else setScheduleSlots([]);
-        setScheduleMaxWeeks(String(inst?.maxTutoringWeeks ?? 8));
-      })
-      .finally(() => setScheduleLoaded(true));
+    if (!user?.uid || !isInstructor) {
+      setInstructorDoc(null);
+      setInstructorSnapReady(false);
+      return;
+    }
+    setInstructorSnapReady(false);
+    const db = getFirestoreDb();
+    const unsub = onSnapshot(
+      doc(db, "instructors", user.uid),
+      (snap) => {
+        if (!snap.exists()) setInstructorDoc(null);
+        else setInstructorDoc(snap.data() as InstructorFirestoreDoc);
+        setInstructorSnapReady(true);
+      },
+      () => {
+        setInstructorDoc(null);
+        setInstructorSnapReady(true);
+      },
+    );
+    return () => unsub();
   }, [user?.uid, isInstructor]);
+
+  const instructorScheduleKey = useMemo(() => {
+    if (!instructorDoc) return "";
+    return JSON.stringify({
+      w: instructorDoc.weeklyAvailability ?? [],
+      m: instructorDoc.maxTutoringWeeks ?? 8,
+    });
+  }, [instructorDoc?.weeklyAvailability, instructorDoc?.maxTutoringWeeks]);
+
+  useEffect(() => {
+    if (!instructorDoc || !instructorScheduleKey) return;
+    if (instructorDoc.weeklyAvailability?.length) {
+      setScheduleSlots(instructorDoc.weeklyAvailability);
+    } else {
+      setScheduleSlots([]);
+    }
+    setScheduleMaxWeeks(String(instructorDoc.maxTutoringWeeks ?? 8));
+  }, [instructorDoc, instructorScheduleKey]);
+
+  useEffect(() => {
+    if (instructorBasicsEditing || !instructorDoc) return;
+    setInstructorBasicsDraft({
+      hourlyRate: String(instructorDoc.hourlyRate ?? 0),
+      nationality: instructorDoc.nationality ?? "",
+      experienceYears: String(instructorDoc.experienceYears ?? 0),
+    });
+  }, [instructorDoc, instructorBasicsEditing]);
 
   useEffect(() => {
     if (!user?.uid) return;
+    if (isInstructor) {
+      setRecordings([]);
+      setReport(null);
+      return;
+    }
+    let cancelled = false;
     const db = getFirestoreDb();
 
     const allRepQ = query(
@@ -137,8 +239,9 @@ function ProfileTab() {
       where("userId", "==", user.uid),
       limit(20),
     );
-    getDocs(allRepQ)
+    void getDocs(allRepQ)
       .then(async (snap) => {
+        if (cancelled) return;
         const storage = getFirebaseStorage();
         const rows: RecordingRow[] = await Promise.all(
           snap.docs.map(async (d) => {
@@ -163,6 +266,7 @@ function ProfileTab() {
             } as RecordingRow;
           }),
         );
+        if (cancelled) return;
         // sort newest first client-side
         rows.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
         setRecordings(rows);
@@ -181,8 +285,9 @@ function ProfileTab() {
       collection(db, "reels"),
       where("uploaderId", "==", user.uid),
     );
-    getDocs(reelQ)
+    void getDocs(reelQ)
       .then((snap) => {
+        if (cancelled) return;
         setReelCount(snap.size);
         const instSet = new Set<string>();
         snap.docs.forEach((d) => {
@@ -192,7 +297,11 @@ function ProfileTab() {
         setInstruments([...instSet]);
       })
       .catch(() => {});
-  }, [user?.uid]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid, isInstructor]);
 
   async function onLogout() {
     await signOutUser();
@@ -221,6 +330,34 @@ function ProfileTab() {
       toast.error(e instanceof Error ? e.message : "Could not save schedule.");
     } finally {
       setScheduleSaving(false);
+    }
+  }
+
+  async function saveInstructorBasics() {
+    if (!user?.uid || !isInstructor) return;
+    const rate = Number.parseInt(instructorBasicsDraft.hourlyRate, 10);
+    const years = Number.parseInt(instructorBasicsDraft.experienceYears, 10);
+    if (!Number.isFinite(rate) || rate < 0) {
+      toast.error("Hourly rate must be a whole number of dollars (0 or more).");
+      return;
+    }
+    if (!Number.isFinite(years) || years < 0 || years > 80) {
+      toast.error("Tutoring experience must be between 0 and 80 years.");
+      return;
+    }
+    setInstructorBasicsSaving(true);
+    try {
+      await updateInstructorProfileBasics(user.uid, {
+        hourlyRate: rate,
+        nationality: instructorBasicsDraft.nationality,
+        experienceYears: years,
+      });
+      toast.success("Profile updated");
+      setInstructorBasicsEditing(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save profile.");
+    } finally {
+      setInstructorBasicsSaving(false);
     }
   }
 
@@ -290,14 +427,21 @@ function ProfileTab() {
             type="button"
             onClick={() => {
               if (isInstructor) {
-                toast.info("Edit profile coming soon.");
+                if (instructorDoc) {
+                  setInstructorBasicsDraft({
+                    hourlyRate: String(instructorDoc.hourlyRate ?? 0),
+                    nationality: instructorDoc.nationality ?? "",
+                    experienceYears: String(instructorDoc.experienceYears ?? 0),
+                  });
+                }
+                setInstructorBasicsEditing(true);
                 return;
               }
               setLearnerBioDraft(profile?.bio ?? "");
               setLearnerBioEditing(true);
             }}
             className="flex h-10 w-10 items-center justify-center rounded-full border border-[#fffdf5]/15 bg-[#fffdf5]/8 text-[#fffdf5]/70 transition hover:bg-[#fffdf5]/14"
-            aria-label="Edit bio"
+            aria-label={isInstructor ? "Edit teaching profile" : "Edit bio"}
           >
             <Edit3 className="h-4 w-4" />
           </button>
@@ -336,17 +480,112 @@ function ProfileTab() {
               <p className="mt-0.5 truncate text-sm text-[#e8f4df]/60">
                 {profile?.email || ""}
               </p>
-              {isInstructor && profile?.nationality && (
-                <div className="mt-2 flex items-center gap-1.5 text-xs text-[#e8f4df]/55">
-                  <MapPin className="h-3 w-3" />
-                  {profile.nationality}
+              {isInstructor && instructorSnapReady && !instructorBasicsEditing && instructorDoc && (
+                <dl className="mt-3 space-y-1.5 text-xs text-[#e8f4df]/65">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <dt className="font-bold uppercase tracking-wider text-[#e8f4df]/45">
+                      Rate
+                    </dt>
+                    <dd className="font-semibold text-[#fffdf5]/90">
+                      {instructorDoc.hourlyRate === 0
+                        ? "Free"
+                        : `$${instructorDoc.hourlyRate}/hr`}
+                    </dd>
+                  </div>
+                  {instructorDoc.nationality?.trim() ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <dt className="sr-only">Nationality</dt>
+                      <dd className="flex items-center gap-1.5">
+                        <MapPin className="h-3 w-3 shrink-0 text-[#a6eee3]/70" />
+                        <span>{instructorDoc.nationality.trim()}</span>
+                      </dd>
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <dt className="font-bold uppercase tracking-wider text-[#e8f4df]/45">
+                      Experience
+                    </dt>
+                    <dd className="font-semibold text-[#fffdf5]/90">
+                      {instructorDoc.experienceYears ?? 0} yrs tutoring
+                    </dd>
+                  </div>
+                </dl>
+              )}
+              {isInstructor && instructorBasicsEditing && (
+                <div className="mt-4 space-y-3 border-t border-[#fffdf5]/10 pt-4">
+                  <p className={`text-xs font-black uppercase tracking-[0.18em] ${brandTheme.gold}`}>
+                    Teaching profile
+                  </p>
+                  <label className="block text-[11px] font-bold uppercase tracking-widest text-[#e8f4df]/45">
+                    Hourly wage (USD)
+                  </label>
+                  <input
+                    value={instructorBasicsDraft.hourlyRate}
+                    onChange={(e) =>
+                      setInstructorBasicsDraft((d) => ({ ...d, hourlyRate: e.target.value }))
+                    }
+                    inputMode="numeric"
+                    className="h-10 w-full max-w-xs rounded-lg border border-[#fffdf5]/15 bg-[#0b1510]/70 px-3 text-sm font-semibold text-[#fffdf5] outline-none focus:border-[#ffd666]/50"
+                  />
+                  <label className="block text-[11px] font-bold uppercase tracking-widest text-[#e8f4df]/45">
+                    Nationality
+                  </label>
+                  <input
+                    value={instructorBasicsDraft.nationality}
+                    onChange={(e) =>
+                      setInstructorBasicsDraft((d) => ({ ...d, nationality: e.target.value }))
+                    }
+                    placeholder="e.g. United States"
+                    className="h-10 w-full max-w-xs rounded-lg border border-[#fffdf5]/15 bg-[#0b1510]/70 px-3 text-sm font-semibold text-[#fffdf5] outline-none focus:border-[#ffd666]/50"
+                  />
+                  <label className="block text-[11px] font-bold uppercase tracking-widest text-[#e8f4df]/45">
+                    Tutoring experience (years)
+                  </label>
+                  <input
+                    value={instructorBasicsDraft.experienceYears}
+                    onChange={(e) =>
+                      setInstructorBasicsDraft((d) => ({ ...d, experienceYears: e.target.value }))
+                    }
+                    inputMode="numeric"
+                    className="h-10 w-full max-w-xs rounded-lg border border-[#fffdf5]/15 bg-[#0b1510]/70 px-3 text-sm font-semibold text-[#fffdf5] outline-none focus:border-[#ffd666]/50"
+                  />
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-[#ffd666] text-[#11140c] hover:bg-[#ffd666]/90"
+                      disabled={instructorBasicsSaving}
+                      onClick={() => void saveInstructorBasics()}
+                    >
+                      {instructorBasicsSaving ? "Saving…" : "Save"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-[#fffdf5]/20 text-[#fffdf5] hover:bg-[#fffdf5]/10"
+                      disabled={instructorBasicsSaving}
+                      onClick={() => {
+                        if (instructorDoc) {
+                          setInstructorBasicsDraft({
+                            hourlyRate: String(instructorDoc.hourlyRate ?? 0),
+                            nationality: instructorDoc.nationality ?? "",
+                            experienceYears: String(instructorDoc.experienceYears ?? 0),
+                          });
+                        }
+                        setInstructorBasicsEditing(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
           </div>
-          {isInstructor && profile?.bio && (
+          {isInstructor && instructorDoc?.bio?.trim() && !instructorBasicsEditing && (
             <p className="mt-4 border-t border-[#fffdf5]/10 pt-4 text-sm leading-6 text-[#e8f4df]/75">
-              {profile.bio}
+              {instructorDoc.bio}
             </p>
           )}
 
@@ -426,7 +665,7 @@ function ProfileTab() {
           </motion.section>
         )}
 
-        {isInstructor && (
+        {isInstructor && instructorSnapReady && (
           <motion.section
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -436,29 +675,18 @@ function ProfileTab() {
             <p className={`mb-4 text-xs font-black uppercase tracking-[0.18em] ${brandTheme.gold}`}>
               Teaching details
             </p>
-            <div className="grid grid-cols-2 gap-3">
-              {profile?.experienceYears != null && (
-                <div className="rounded-lg border border-[#fffdf5]/10 bg-[#fffdf5]/5 p-3">
-                  <p className="text-2xl font-black text-[#fffdf5]">{profile.experienceYears}</p>
-                  <p className="mt-0.5 text-xs text-[#e8f4df]/55">yrs experience</p>
-                </div>
-              )}
-              {profile?.hourlyRate != null && (
-                <div className="rounded-lg border border-[#fffdf5]/10 bg-[#fffdf5]/5 p-3">
-                  <div className="flex items-baseline gap-0.5">
-                    <DollarSign className="h-3 w-3 self-center text-[#ffd666]" />
-                    <p className="text-2xl font-black text-[#fffdf5]">
-                      {profile.hourlyRate === 0 ? "Free" : profile.hourlyRate}
-                    </p>
-                  </div>
-                  <p className="mt-0.5 text-xs text-[#e8f4df]/55">hourly rate</p>
-                </div>
-              )}
-            </div>
+            {instructorDoc ? (
+              <InstructorStarRating
+                averageOutOf5={instructorDoc.rating ?? 0}
+                reviewCount={instructorDoc.reviewCount ?? 0}
+              />
+            ) : (
+              <p className="text-sm text-[#e8f4df]/55">Finish onboarding to show your teaching stats.</p>
+            )}
           </motion.section>
         )}
 
-        {isInstructor && scheduleLoaded && (
+        {isInstructor && instructorSnapReady && (
           <motion.section
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -507,58 +735,60 @@ function ProfileTab() {
           </motion.section>
         )}
 
-        <motion.section
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
-          className="rounded-xl border border-[#ffd666]/30 bg-[#ffd666]/8 p-6"
-        >
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className={`text-xs font-black uppercase tracking-[0.18em] ${brandTheme.gold}`}>
-                Profile rating
-              </p>
-              <h3 className="mt-1 text-lg font-black text-[#fffdf5]">AI Skills Analysis</h3>
-            </div>
-            <Star className="h-5 w-5 text-[#ffd666]" />
-          </div>
-          {report ? (
-            <div className="space-y-3">
-              <div className="flex items-baseline gap-2">
-                <span className="text-5xl font-black text-[#ffd666]">{report.overallScore ?? "—"}</span>
-                <span className="text-lg font-bold text-[#e8f4df]/55">/100</span>
+        {!isInstructor && (
+          <motion.section
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
+            className="rounded-xl border border-[#ffd666]/30 bg-[#ffd666]/8 p-6"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className={`text-xs font-black uppercase tracking-[0.18em] ${brandTheme.gold}`}>
+                  Profile rating
+                </p>
+                <h3 className="mt-1 text-lg font-black text-[#fffdf5]">AI Skills Analysis</h3>
               </div>
-              <p className="text-xs font-semibold capitalize text-[#e8f4df]/60">
-                Instrument: {report.instrument ?? "—"}
-              </p>
-              {(report.weaknesses ?? []).length > 0 && (
-                <div className="mt-3 space-y-1.5">
-                  <p className="text-xs font-bold uppercase tracking-widest text-[#e8f4df]/45">
-                    Focus areas
-                  </p>
-                  {(report.weaknesses ?? []).slice(0, 3).map((w, i) => (
-                    <div
-                      key={i}
-                      className="flex items-start gap-2 rounded-lg bg-[#fffdf5]/6 px-3 py-2 text-sm text-[#e8f4df]/75"
-                    >
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#ffd666]" />
-                      {w}
-                    </div>
-                  ))}
+              <Star className="h-5 w-5 text-[#ffd666]" />
+            </div>
+            {report ? (
+              <div className="space-y-3">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-5xl font-black text-[#ffd666]">{report.overallScore ?? "—"}</span>
+                  <span className="text-lg font-bold text-[#e8f4df]/55">/100</span>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="py-4 text-center">
-              <p className="text-sm text-[#e8f4df]/55">No analysis yet.</p>
-              <Link to="/app/analyze">
-                <Pill className={`mt-4 ${brandTheme.primaryButton}`} size="sm">
-                  Record your first take
-                </Pill>
-              </Link>
-            </div>
-          )}
-        </motion.section>
+                <p className="text-xs font-semibold capitalize text-[#e8f4df]/60">
+                  Instrument: {report.instrument ?? "—"}
+                </p>
+                {(report.weaknesses ?? []).length > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    <p className="text-xs font-bold uppercase tracking-widest text-[#e8f4df]/45">
+                      Focus areas
+                    </p>
+                    {(report.weaknesses ?? []).slice(0, 3).map((w, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-2 rounded-lg bg-[#fffdf5]/6 px-3 py-2 text-sm text-[#e8f4df]/75"
+                      >
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#ffd666]" />
+                        {w}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="py-4 text-center">
+                <p className="text-sm text-[#e8f4df]/55">No analysis yet.</p>
+                <Link to="/app/analyze">
+                  <Pill className={`mt-4 ${brandTheme.primaryButton}`} size="sm">
+                    Record your first take
+                  </Pill>
+                </Link>
+              </div>
+            )}
+          </motion.section>
+        )}
 
         <motion.section
           initial={{ opacity: 0, y: 16 }}
@@ -574,13 +804,13 @@ function ProfileTab() {
           </div>
           <div className="flex flex-wrap gap-2">
             {isInstructor ? (
-              (profile?.specialties as string[] | undefined)?.length ? (
-                (profile.specialties as string[]).map((s) => (
+              instructorDoc?.specialties?.length ? (
+                instructorDoc.specialties.map((slug) => (
                   <span
-                    key={s}
-                    className="rounded-full border border-[#a6eee3]/30 bg-[#a6eee3]/10 px-3 py-1 text-xs font-bold capitalize text-[#a6eee3]"
+                    key={slug}
+                    className="rounded-full border border-[#a6eee3]/30 bg-[#a6eee3]/10 px-3 py-1 text-xs font-bold text-[#a6eee3]"
                   >
-                    {s}
+                    {formatSpecialtyLabel(slug)}
                   </span>
                 ))
               ) : (
@@ -625,115 +855,117 @@ function ProfileTab() {
           </motion.section>
         )}
 
-        <motion.section
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.24, ease: [0.16, 1, 0.3, 1] }}
-          className="rounded-xl border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-6"
-        >
-          <div className="mb-4 flex items-center gap-2">
-            <Mic className="h-4 w-4 text-[#a6eee3]" />
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a6eee3]">
-              My Recordings
-            </p>
-          </div>
-          {recordings.length === 0 ? (
-            <div className="py-4 text-center">
-              <p className="text-sm text-[#e8f4df]/55">No recordings yet.</p>
-              <Link to="/app/analyze">
-                <Pill className={`mt-4 ${brandTheme.primaryButton}`} size="sm">
-                  Record your first take
-                </Pill>
-              </Link>
+        {!isInstructor && (
+          <motion.section
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.24, ease: [0.16, 1, 0.3, 1] }}
+            className="rounded-xl border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-6"
+          >
+            <div className="mb-4 flex items-center gap-2">
+              <Mic className="h-4 w-4 text-[#a6eee3]" />
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a6eee3]">
+                My Recordings
+              </p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {recordings.map((rec) => {
-                const date = rec.createdAt?.seconds
-                  ? new Date(rec.createdAt.seconds * 1000).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })
-                  : null;
-                const expanded = expandedIds.has(rec.id);
-                const toggleExpand = () =>
-                  setExpandedIds((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(rec.id)) next.delete(rec.id);
-                    else next.add(rec.id);
-                    return next;
-                  });
-                return (
-                  <div
-                    key={rec.id}
-                    className="rounded-lg border border-[#fffdf5]/10 bg-[#fffdf5]/5 p-4 space-y-2"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-[#fffdf5]">
-                          {rec.name || `${rec.instrument ?? "Recording"} take`}
-                        </p>
-                        <div className="mt-1 flex items-center gap-2">
-                          <span className="rounded-full border border-[#a6eee3]/30 bg-[#a6eee3]/10 px-2 py-0.5 text-[10px] font-bold capitalize text-[#a6eee3]">
-                            {rec.instrument ?? "Unknown"}
-                          </span>
-                          {rec.overallScore != null && (
-                            <span className="text-xs font-bold text-[#ffd666]">
-                              {rec.overallScore}/100
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {date && (
-                        <span className="shrink-0 text-xs text-[#e8f4df]/40">{date}</span>
-                      )}
-                    </div>
-                    {rec.audioUrl && (
-                      <audio
-                        controls
-                        src={rec.audioUrl}
-                        className="w-full mt-1"
-                        style={{ colorScheme: "dark" }}
-                      />
-                    )}
-                    <button
-                      onClick={toggleExpand}
-                      className="flex w-full items-center justify-between pt-1 text-xs font-semibold text-[#e8f4df]/50 transition hover:text-[#e8f4df]/80"
+            {recordings.length === 0 ? (
+              <div className="py-4 text-center">
+                <p className="text-sm text-[#e8f4df]/55">No recordings yet.</p>
+                <Link to="/app/analyze">
+                  <Pill className={`mt-4 ${brandTheme.primaryButton}`} size="sm">
+                    Record your first take
+                  </Pill>
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recordings.map((rec) => {
+                  const date = rec.createdAt?.seconds
+                    ? new Date(rec.createdAt.seconds * 1000).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })
+                    : null;
+                  const expanded = expandedIds.has(rec.id);
+                  const toggleExpand = () =>
+                    setExpandedIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(rec.id)) next.delete(rec.id);
+                      else next.add(rec.id);
+                      return next;
+                    });
+                  return (
+                    <div
+                      key={rec.id}
+                      className="rounded-lg border border-[#fffdf5]/10 bg-[#fffdf5]/5 p-4 space-y-2"
                     >
-                      <span>View Analysis</span>
-                      {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                    </button>
-                    {expanded && (
-                      <div className="mt-1 space-y-2 rounded-lg border border-[#fffdf5]/8 bg-[#fffdf5]/4 px-3 py-3">
-                        {rec.status === "pending" || rec.overallScore == null ? (
-                          <p className="text-xs text-[#e8f4df]/45 text-center py-1">
-                            Analysis in progress — check back soon.
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-[#fffdf5]">
+                            {rec.name || `${rec.instrument ?? "Recording"} take`}
                           </p>
-                        ) : (
-                          <>
-                            <p className="text-xs font-bold uppercase tracking-widest text-[#e8f4df]/40 mb-2">
-                              Breakdown
-                            </p>
-                            {["Pitch accuracy", "Rhythm", "Tone quality", "Note attack", "Pitch stability"].map((label) => (
-                              <div key={label} className="space-y-1">
-                                <div className="flex justify-between text-xs text-[#e8f4df]/55">
-                                  <span>{label}</span>
-                                  <span className="text-[#ffd666]/60">—</span>
-                                </div>
-                                <div className="h-1.5 w-full rounded-full bg-[#fffdf5]/8" />
-                              </div>
-                            ))}
-                          </>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="rounded-full border border-[#a6eee3]/30 bg-[#a6eee3]/10 px-2 py-0.5 text-[10px] font-bold capitalize text-[#a6eee3]">
+                              {rec.instrument ?? "Unknown"}
+                            </span>
+                            {rec.overallScore != null && (
+                              <span className="text-xs font-bold text-[#ffd666]">
+                                {rec.overallScore}/100
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {date && (
+                          <span className="shrink-0 text-xs text-[#e8f4df]/40">{date}</span>
                         )}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </motion.section>
+                      {rec.audioUrl && (
+                        <audio
+                          controls
+                          src={rec.audioUrl}
+                          className="w-full mt-1"
+                          style={{ colorScheme: "dark" }}
+                        />
+                      )}
+                      <button
+                        onClick={toggleExpand}
+                        className="flex w-full items-center justify-between pt-1 text-xs font-semibold text-[#e8f4df]/50 transition hover:text-[#e8f4df]/80"
+                      >
+                        <span>View Analysis</span>
+                        {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </button>
+                      {expanded && (
+                        <div className="mt-1 space-y-2 rounded-lg border border-[#fffdf5]/8 bg-[#fffdf5]/4 px-3 py-3">
+                          {rec.status === "pending" || rec.overallScore == null ? (
+                            <p className="text-xs text-[#e8f4df]/45 text-center py-1">
+                              Analysis in progress — check back soon.
+                            </p>
+                          ) : (
+                            <>
+                              <p className="text-xs font-bold uppercase tracking-widest text-[#e8f4df]/40 mb-2">
+                                Breakdown
+                              </p>
+                              {["Pitch accuracy", "Rhythm", "Tone quality", "Note attack", "Pitch stability"].map((label) => (
+                                <div key={label} className="space-y-1">
+                                  <div className="flex justify-between text-xs text-[#e8f4df]/55">
+                                    <span>{label}</span>
+                                    <span className="text-[#ffd666]/60">—</span>
+                                  </div>
+                                  <div className="h-1.5 w-full rounded-full bg-[#fffdf5]/8" />
+                                </div>
+                              ))}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </motion.section>
+        )}
 
         <motion.div
           initial={{ opacity: 0, y: 16 }}
