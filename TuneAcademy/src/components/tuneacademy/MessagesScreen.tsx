@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  markChatRead,
   sendChatMessage,
   useChatLastMessagePreviews,
   useChatThread,
@@ -111,6 +112,12 @@ export function MessagesScreen({ initialChatId }: MessagesScreenProps) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, selectedChatId]);
+
+  const lastMsgId = messages[messages.length - 1]?.id;
+  useEffect(() => {
+    if (!selectedChatId || !uid) return;
+    void markChatRead(selectedChatId, uid);
+  }, [selectedChatId, uid, lastMsgId]);
 
   useEffect(() => {
     if (inviteError) toast.error(inviteError);

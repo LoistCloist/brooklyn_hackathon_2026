@@ -1,21 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  addDoc,
   collection,
   doc,
+  type DocumentSnapshot,
   getDoc,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { firestoreLikeToMillisOrZero } from "@/lib/firestoreTime";
-import { chatIdForUserPair, DIRECT_INSTRUCTOR_DM_REEL_ID } from "@/lib/messaging";
+import { chatIdForUserPair, DIRECT_INSTRUCTOR_DM_REEL_ID, otherUserIdFromChatId } from "@/lib/messaging";
 import type { UserRole } from "@/lib/tuneacademyFirestore";
 import type { ChatMessage, Invitation } from "@/types";
 
@@ -324,11 +326,56 @@ export async function sendChatMessage(
   const trimmed = text.trim();
   if (!trimmed) return;
   const db = getFirestoreDb();
-  await addDoc(collection(db, "messages", chatId, "messages"), {
+  const otherUid = otherUserIdFromChatId(chatId, senderId);
+  const batch = writeBatch(db);
+  batch.set(doc(collection(db, "messages", chatId, "messages")), {
     senderId,
     text: trimmed,
     createdAt: serverTimestamp(),
   });
+  if (otherUid) {
+    batch.set(
+      doc(db, "messages", chatId),
+      { [`unreadCount_${otherUid}`]: increment(1) },
+      { merge: true },
+    );
+  }
+  await batch.commit();
+}
+
+export async function markChatRead(chatId: string, uid: string): Promise<void> {
+  const db = getFirestoreDb();
+  await setDoc(doc(db, "messages", chatId), { [`unreadCount_${uid}`]: 0 }, { merge: true });
+}
+
+export function useUnreadTotal(uid: string | undefined, chatIds: string[]): number {
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const key = useMemo(() => [...chatIds].sort().join("|"), [chatIds]);
+
+  useEffect(() => {
+    const ids = key ? key.split("|") : [];
+    if (!uid || !ids.length) {
+      setCounts({});
+      return;
+    }
+    const db = getFirestoreDb();
+    const field = `unreadCount_${uid}`;
+    const unsubs = ids.map((chatId: string) =>
+      onSnapshot(doc(db, "messages", chatId), (snap: DocumentSnapshot) => {
+        const data = snap.data() as Record<string, unknown> | undefined;
+        setCounts((prev: Record<string, number>) => ({ ...prev, [chatId]: Number(data?.[field] ?? 0) }));
+      }),
+    );
+    return () => unsubs.forEach((u: () => void) => u());
+  }, [uid, key]);
+
+  return useMemo(() => (Object.values(counts) as number[]).reduce((a, b) => a + b, 0), [counts]);
+}
+
+export function useUnreadDot(uid: string | undefined): boolean {
+  const { conversations } = useMessagingInvitations(uid);
+  const chatIds = useMemo(() => conversations.map((c: MessagingConversation) => c.chatId), [conversations]);
+  return useUnreadTotal(uid, chatIds) > 0;
 }
 
 /**
@@ -383,6 +430,11 @@ export async function ensureLearnerInstructorThread(params: {
     text,
     createdAt: serverTimestamp(),
   });
+  batch.set(
+    doc(db, "messages", chatId),
+    { [`unreadCount_${instructorId}`]: increment(1) },
+    { merge: true },
+  );
   await batch.commit();
   return chatId;
 }
