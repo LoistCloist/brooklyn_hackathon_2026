@@ -108,6 +108,23 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     font-feature-settings: "ss01", "cv11";
+    scrollbar-color: #ffd666 rgba(255, 253, 245, 0.08);
+    scrollbar-width: thin;
+  }
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(255, 253, 245, 0.06);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #ffe08a, #ffd666);
+    border: 3px solid #0b1510;
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #ffe08a;
   }
   /* Hide scrollbars on horizontal chip rows */
   .no-scrollbar::-webkit-scrollbar { display: none; }

@@ -54,7 +54,7 @@ function HomeTab() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="relative min-h-[340px] p-8 lg:p-10">
+            <div className="relative min-h-85 p-8 lg:p-10">
               <div className="absolute right-0 top-0 h-56 w-56 rounded-bl-[160px] bg-[#ffd666]/20" />
               <div className="relative max-w-2xl">
                 <div className="inline-flex items-center gap-2 rounded-lg bg-[#ffd666] px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-[#11140c]">
@@ -67,9 +67,8 @@ function HomeTab() {
                   Fix your weak spots.
                 </h2>
                 <p className="mt-5 max-w-xl text-lg leading-8 text-[#e8f4df]/80">
-                  Record a short take and TuneAcademy's AI will listen for timing, pitch, tone,
-                  and consistency. You'll get a clear breakdown of what is working and what to
-                  practice next.
+                  Record a short take. TuneAcademy finds your strengths, weak spots, next practice
+                  steps, and the tutor type that fits.
                 </p>
                 <Link to="/app/analyze">
                   <Pill className={`mt-7 px-8 ${brandTheme.primaryButton}`} size="lg">
