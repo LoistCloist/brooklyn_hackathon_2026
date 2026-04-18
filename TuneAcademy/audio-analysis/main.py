@@ -1,4 +1,4 @@
-"""MusiLearn API stub — PRD §6. Essentia wiring comes post-hackathon."""
+"""MusiLearn API — Essentia-powered audio analysis backend."""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
