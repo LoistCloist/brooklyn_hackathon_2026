@@ -5,8 +5,15 @@ import { Avatar } from "@/components/tuneacademy/Avatar";
 import { Pill } from "@/components/tuneacademy/Pill";
 import { useAuth } from "@/contexts/AuthContext";
 import { brandTheme } from "@/lib/theme";
-import { ArrowRight, CalendarDays, Flame, LogOut, Mic, Sparkles, TrendingUp } from "lucide-react";
+import {
+  getNextUpcomingMeeting,
+  subscribeEngagementsForUser,
+  subscribePendingRequestCount,
+  type TutoringEngagementDoc,
+} from "@/lib/tutoringFirestore";
+import { ArrowRight, Bell, CalendarDays, Flame, LogOut, Mic, Sparkles, TrendingUp } from "lucide-react";
 import { motion } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
 
 function initialsFromProfile(fullName: string | undefined, email: string | undefined): string {
   const name = fullName?.trim();
@@ -46,8 +53,28 @@ const progressBars = [
 
 function HomeTab() {
   const nav = useNavigate();
-  const { userDoc, signOutUser } = useAuth();
+  const { user, userDoc, signOutUser } = useAuth();
   const initials = initialsFromProfile(userDoc?.fullName, userDoc?.email);
+  const isInstructor = userDoc?.role === "instructor";
+  const [pendingCount, setPendingCount] = useState(0);
+  const [engagementRows, setEngagementRows] = useState<{ id: string; data: TutoringEngagementDoc }[]>(
+    [],
+  );
+
+  useEffect(() => {
+    return subscribePendingRequestCount(isInstructor ? user?.uid ?? null : null, setPendingCount);
+  }, [isInstructor, user?.uid]);
+
+  useEffect(() => {
+    const role =
+      userDoc?.role === "instructor" ? "instructor" : userDoc?.role === "learner" ? "learner" : null;
+    return subscribeEngagementsForUser(user?.uid ?? null, role, setEngagementRows);
+  }, [user?.uid, userDoc?.role]);
+
+  const nextMeeting = useMemo(
+    () => getNextUpcomingMeeting(engagementRows),
+    [engagementRows],
+  );
 
   async function onLogout() {
     await signOutUser();
@@ -174,54 +201,124 @@ function HomeTab() {
         </div>
 
         <aside className="space-y-5">
-          <section className="rounded-lg border border-[#fffdf5]/20 bg-[#fffdf5]/10 p-6 backdrop-blur">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a6eee3]">
-                  Progress
-                </p>
-                <h2 className="mt-2 text-2xl font-black">Current skill mix</h2>
-              </div>
-              <TrendingUp className="h-5 w-5 text-[#a6eee3]" />
-            </div>
-            <div className="space-y-6">
-              {progressBars.map((bar) => (
-                <div key={bar.label}>
-                  <div className="mb-2 flex justify-between text-sm font-semibold">
-                    <span>{bar.label}</span>
-                    <span className="text-[#e8f4df]/65">{bar.value}%</span>
-                  </div>
-                  <div className="h-2 rounded-lg bg-[#fffdf5]/14">
-                    <motion.div
-                      className={`h-full rounded-lg ${bar.color}`}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${bar.value}%` }}
-                      transition={{ duration: 0.9, delay: 0.15 }}
-                    />
-                  </div>
+          {isInstructor ? (
+            <section className="rounded-lg border border-[#ffd666]/35 bg-[#ffd666]/12 p-6 backdrop-blur">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#11140c]/70">
+                    Scheduling
+                  </p>
+                  <h2 className="mt-2 text-2xl font-black leading-tight text-[#11140c]">
+                    Tutoring requests
+                  </h2>
                 </div>
-              ))}
-            </div>
-          </section>
+                <Bell className="h-5 w-5 text-[#11140c]/80" />
+              </div>
+              {pendingCount > 0 ? (
+                <div className="space-y-3 text-[#11140c]">
+                  <p className="text-sm font-semibold leading-relaxed">
+                    You have{" "}
+                    <span className="font-black tabular-nums">{pendingCount}</span> pending request
+                    {pendingCount === 1 ? "" : "s"}.
+                  </p>
+                  <Link
+                    to="/app/students"
+                    search={{ tab: "pending" }}
+                    className="flex items-center justify-between rounded-lg border border-[#11140c]/20 bg-[#11140c]/10 px-4 py-3 text-sm font-black text-[#11140c] transition hover:bg-[#11140c]/16"
+                  >
+                    Click to handle them
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-3 text-[#11140c]">
+                  <p className="text-sm font-semibold">No pending requests.</p>
+                  <Link
+                    to="/app/students"
+                    search={{ tab: "explore" }}
+                    className="flex items-center justify-between rounded-lg border border-[#11140c]/20 bg-[#11140c]/10 px-4 py-3 text-sm font-black text-[#11140c] transition hover:bg-[#11140c]/16"
+                  >
+                    Search for students
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              )}
+            </section>
+          ) : (
+            <section className="rounded-lg border border-[#fffdf5]/20 bg-[#fffdf5]/10 p-6 backdrop-blur">
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a6eee3]">
+                    Progress
+                  </p>
+                  <h2 className="mt-2 text-2xl font-black">Current skill mix</h2>
+                </div>
+                <TrendingUp className="h-5 w-5 text-[#a6eee3]" />
+              </div>
+              <div className="space-y-6">
+                {progressBars.map((bar) => (
+                  <div key={bar.label}>
+                    <div className="mb-2 flex justify-between text-sm font-semibold">
+                      <span>{bar.label}</span>
+                      <span className="text-[#e8f4df]/65">{bar.value}%</span>
+                    </div>
+                    <div className="h-2 rounded-lg bg-[#fffdf5]/14">
+                      <motion.div
+                        className={`h-full rounded-lg ${bar.color}`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${bar.value}%` }}
+                        transition={{ duration: 0.9, delay: 0.15 }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="grid gap-3">
             <div className="rounded-lg border border-[#ffd666]/35 bg-[#ffd666] p-5 text-[#11140c]">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em]">Upcoming</p>
-                  <h2 className="mt-3 text-2xl font-black leading-tight">Maya Chen</h2>
-                  <p className="mt-1 text-sm font-semibold opacity-75">Jazz piano, timing repair</p>
+                  <h2 className="mt-3 text-xl font-black leading-tight">
+                    {nextMeeting ? "Next meeting" : "No session booked"}
+                  </h2>
+                  <p className="mt-1 text-sm font-semibold opacity-75">
+                    {nextMeeting
+                      ? nextMeeting.startAt.toLocaleString(undefined, {
+                          weekday: "short",
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })
+                      : isInstructor
+                        ? "When you accept a request, it shows up here."
+                        : "Request services from an instructor to get started."}
+                  </p>
                 </div>
-                <CalendarDays className="h-6 w-6" />
+                <CalendarDays className="h-6 w-6 shrink-0" />
               </div>
-              <p className="mt-5 rounded-lg bg-[#11140c]/10 px-3 py-2 text-sm font-bold">
-                Placeholder session: Apr 22 at 5:00 PM
-              </p>
+              {nextMeeting ? (
+                <Link
+                  to="/app/meeting"
+                  search={{ engagementId: nextMeeting.engagementId }}
+                  className="mt-5 block w-full rounded-lg bg-[#11140c]/10 px-3 py-3 text-center text-sm font-black transition hover:bg-[#11140c]/16"
+                >
+                  Join meeting
+                </Link>
+              ) : (
+                <p className="mt-5 rounded-lg bg-[#11140c]/10 px-3 py-2 text-center text-xs font-semibold opacity-80">
+                  Your next live window will appear here.
+                </p>
+              )}
             </div>
 
             {userDoc?.role === "instructor" ? (
               <Link
                 to="/app/students"
+                search={{ tab: "explore" }}
                 className="flex items-center justify-between rounded-lg border border-[#ffd666]/35 bg-[#ffd666]/12 p-4 text-sm font-bold text-[#ffd666] transition hover:bg-[#ffd666]/18"
               >
                 Open student roster

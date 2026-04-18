@@ -1,6 +1,8 @@
 import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { getFirebaseStorage, getFirestoreDb } from "@/lib/firebase";
+import type { WeeklyTimeSlot } from "@/lib/scheduling";
+import { slotKey } from "@/lib/scheduling";
 
 /** PRD: /users/{userId} */
 export type UserRole = "learner" | "instructor";
@@ -27,6 +29,10 @@ export type InstructorFirestoreDoc = {
   hourlyRate: number;
   rating: number;
   reviewCount: number;
+  /** Recurring hour blocks learners can request (see `WeeklyTimeSlot`). */
+  weeklyAvailability?: WeeklyTimeSlot[];
+  /** Upper bound learners can pick when requesting multi-week tutoring. */
+  maxTutoringWeeks?: number;
 };
 
 export function specialtyToSlug(label: string): string {
@@ -101,6 +107,8 @@ export async function saveInstructorOnboarding(
     specialties: string[];
     bio: string;
     hourlyRate: number;
+    weeklyAvailability: WeeklyTimeSlot[];
+    maxTutoringWeeks: number;
   },
 ): Promise<void> {
   const db = getFirestoreDb();
@@ -113,6 +121,8 @@ export async function saveInstructorOnboarding(
     specialties: payload.specialties,
     bio: payload.bio,
     hourlyRate: payload.hourlyRate,
+    weeklyAvailability: payload.weeklyAvailability,
+    maxTutoringWeeks: payload.maxTutoringWeeks,
     rating: 0,
     reviewCount: 0,
   });
@@ -120,5 +130,31 @@ export async function saveInstructorOnboarding(
   await updateDoc(doc(db, "users", uid), {
     fullName: payload.fullName,
     avatarUrl: payload.avatarUrl,
+  });
+}
+
+export async function updateInstructorScheduleSettings(
+  uid: string,
+  payload: { weeklyAvailability: WeeklyTimeSlot[]; maxTutoringWeeks: number },
+): Promise<void> {
+  const weeks = Math.min(52, Math.max(1, Math.floor(payload.maxTutoringWeeks)));
+  const slots = payload.weeklyAvailability.filter(
+    (s) =>
+      s.weekday >= 0 &&
+      s.weekday <= 6 &&
+      s.startMinute >= 0 &&
+      s.endMinute > s.startMinute &&
+      s.endMinute <= 24 * 60,
+  );
+  const dedupKeys = new Set<string>();
+  const weeklyAvailability = slots.filter((s) => {
+    const k = slotKey(s);
+    if (dedupKeys.has(k)) return false;
+    dedupKeys.add(k);
+    return true;
+  });
+  await updateDoc(doc(getFirestoreDb(), "instructors", uid), {
+    weeklyAvailability,
+    maxTutoringWeeks: weeks,
   });
 }

@@ -8,10 +8,24 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatSpecialtyLabel } from "@/hooks/useInstructorsDirectory";
 import { ensureLearnerInstructorThread } from "@/hooks/useMessaging";
+import {
+  dedupeWeeklySlots,
+  flattenEngagementHolds,
+  formatSlotLabel,
+  slotKey,
+  subtractRecurringHolds,
+  type WeeklyTimeSlot,
+} from "@/lib/scheduling";
 import { getInstructorDoc } from "@/lib/tuneacademyFirestore";
 import type { InstructorFirestoreDoc } from "@/lib/tuneacademyFirestore";
+import {
+  createTutoringRequest,
+  fetchEngagementsForInstructor,
+  TUTORING_MESSAGE_MAX,
+  type TutoringEngagementDoc,
+} from "@/lib/tutoringFirestore";
 import { ArrowLeft, Star, MessageSquare, Calendar } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
@@ -19,8 +33,6 @@ export const Route = createFileRoute("/app/instructors/$id")({
   head: () => ({ meta: [{ title: "Instructor — TuneAcademy" }] }),
   component: InstructorProfile,
 });
-
-const SLOTS = ["9:00 AM", "11:00 AM", "2:00 PM", "5:00 PM"];
 
 function initialsFromName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -44,14 +56,79 @@ function InstructorProfile() {
     });
   }, [id]);
 
+  const [engagements, setEngagements] = useState<TutoringEngagementDoc[]>([]);
+  useEffect(() => {
+    void fetchEngagementsForInstructor(id).then((rows) => {
+      setEngagements(rows.map((r) => r.data));
+    });
+  }, [id]);
+
   const [open, setOpen] = useState<"request" | "chat" | null>(null);
-  const [slot, setSlot] = useState<string | null>(null);
+  const [selectedSlots, setSelectedSlots] = useState<WeeklyTimeSlot[]>([]);
+  const [weeks, setWeeks] = useState(1);
+  const [requestMessage, setRequestMessage] = useState("");
+  const [requestSending, setRequestSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [dmText, setDmText] = useState("");
   const [dmSending, setDmSending] = useState(false);
 
+  const offeredSlots = useMemo(() => {
+    if (!i) return [];
+    const holds = flattenEngagementHolds(
+      engagements.map((e) => ({ weeklySlots: e.weeklySlots, meetings: e.meetings })),
+    );
+    return subtractRecurringHolds(dedupeWeeklySlots(i.weeklyAvailability ?? []), holds);
+  }, [i, engagements]);
+
+  const maxWeeksForInstructor = Math.min(52, Math.max(1, i?.maxTutoringWeeks ?? 12));
+
+  useEffect(() => {
+    if (!i) return;
+    const cap = Math.min(52, Math.max(1, i.maxTutoringWeeks ?? 12));
+    setWeeks((w) => Math.min(Math.max(1, w), cap));
+  }, [i]);
+
   const canDm =
     Boolean(user?.uid) && userDoc?.role === "learner" && user?.uid !== id && Boolean(i?.fullName);
+
+  const canRequestServices = canDm;
+
+  function toggleWeeklySlot(slot: WeeklyTimeSlot) {
+    const k = slotKey(slot);
+    setSelectedSlots((prev) => {
+      const has = prev.some((s) => slotKey(s) === k);
+      if (has) return prev.filter((s) => slotKey(s) !== k);
+      return [...prev, slot];
+    });
+  }
+
+  const sendServiceRequest = async () => {
+    if (!user?.uid || !i) return;
+    if (!selectedSlots.length) {
+      toast.error("Pick at least one weekly time.");
+      return;
+    }
+    if (weeks < 1 || weeks > maxWeeksForInstructor) {
+      toast.error(`Choose 1–${maxWeeksForInstructor} weeks.`);
+      return;
+    }
+    setRequestSending(true);
+    try {
+      await createTutoringRequest({
+        learnerId: user.uid,
+        instructorId: id,
+        weeklySlots: dedupeWeeklySlots(selectedSlots),
+        weeks,
+        message: requestMessage,
+      });
+      toast.success("Request sent");
+      setSent(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not send request.");
+    } finally {
+      setRequestSending(false);
+    }
+  };
 
   const sendDm = async () => {
     if (!user?.uid || !i) return;
@@ -153,8 +230,21 @@ function InstructorProfile() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 px-5 pt-6">
-        <Pill onClick={() => setOpen("request")}>
-          <Calendar className="h-4 w-4" /> Request session
+        <Pill
+          disabled={!canRequestServices}
+          onClick={() => {
+            if (!canRequestServices) {
+              toast.error("Sign in as a learner to request services.");
+              return;
+            }
+            setSelectedSlots([]);
+            setWeeks(1);
+            setRequestMessage("");
+            setSent(false);
+            setOpen("request");
+          }}
+        >
+          <Calendar className="h-4 w-4" /> Request services
         </Pill>
         <Pill
           variant="secondary"
@@ -188,9 +278,12 @@ function InstructorProfile() {
         {open === "request" && (
           <Sheet
             onClose={() => {
+              if (requestSending) return;
               setOpen(null);
               setSent(false);
-              setSlot(null);
+              setSelectedSlots([]);
+              setWeeks(1);
+              setRequestMessage("");
             }}
           >
             {sent ? (
@@ -200,14 +293,16 @@ function InstructorProfile() {
                 </div>
                 <h3 className="text-lg font-semibold">Request sent</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {i.fullName} will respond shortly.
+                  {i.fullName} will review your proposed schedule.
                 </p>
                 <Pill
                   className="mt-6 w-full"
                   onClick={() => {
                     setOpen(null);
                     setSent(false);
-                    setSlot(null);
+                    setSelectedSlots([]);
+                    setWeeks(1);
+                    setRequestMessage("");
                   }}
                 >
                   Done
@@ -215,42 +310,95 @@ function InstructorProfile() {
               </div>
             ) : (
               <>
-                <h3 className="text-lg font-semibold tracking-tight">Request a session</h3>
-                <p className="mt-1 text-sm text-muted-foreground">Pick a time that works.</p>
+                <h3 className="text-lg font-semibold tracking-tight">Request services</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Choose recurring weekly times from this tutor’s availability, how long the series
+                  should run, and an optional note.
+                </p>
 
                 <p className="mt-5 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
-                  Date
+                  Weekly times
                 </p>
-                <MiniCalendar />
+                {offeredSlots.length === 0 ? (
+                  <p className="rounded-xl border border-hairline bg-muted/30 p-4 text-sm text-muted-foreground">
+                    This instructor has not published open hours yet, or every slot is currently
+                    reserved.
+                  </p>
+                ) : (
+                  <div className="max-h-48 overflow-y-auto rounded-xl border border-hairline bg-muted/20 p-3">
+                    <div className="flex flex-wrap gap-2">
+                      {offeredSlots.map((s) => {
+                        const active = selectedSlots.some((x) => slotKey(x) === slotKey(s));
+                        return (
+                          <button
+                            key={slotKey(s)}
+                            type="button"
+                            onClick={() => toggleWeeklySlot(s)}
+                            className={
+                              "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors " +
+                              (active
+                                ? "bg-foreground text-background border-foreground"
+                                : "border-hairline text-muted-foreground hover:text-foreground")
+                            }
+                          >
+                            {formatSlotLabel(s)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <p className="mt-5 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
-                  Time
+                  Series length (weeks)
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {SLOTS.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setSlot(s)}
-                      className={
-                        "h-9 rounded-full border px-4 text-xs font-medium transition-colors " +
-                        (slot === s
-                          ? "bg-foreground text-background border-foreground"
-                          : "border-hairline text-muted-foreground hover:text-foreground")
-                      }
-                    >
-                      {s}
-                    </button>
-                  ))}
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    type="range"
+                    min={1}
+                    max={maxWeeksForInstructor}
+                    value={Math.min(weeks, maxWeeksForInstructor)}
+                    onChange={(e) => setWeeks(Number.parseInt(e.target.value, 10))}
+                    className="h-2 flex-1 min-w-[8rem] accent-foreground"
+                  />
+                  <span className="tabular-nums text-sm font-semibold">
+                    {Math.min(weeks, maxWeeksForInstructor)} / {maxWeeksForInstructor}
+                  </span>
                 </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  This tutor allows up to {maxWeeksForInstructor} calendar week
+                  {maxWeeksForInstructor === 1 ? "" : "s"} per booking.
+                </p>
 
+                <label
+                  htmlFor="svc-msg"
+                  className="mt-5 mb-2 block text-[11px] uppercase tracking-widest text-muted-foreground"
+                >
+                  Message (optional)
+                </label>
                 <textarea
+                  id="svc-msg"
                   rows={3}
-                  placeholder="Optional message"
-                  className="mt-5 w-full resize-none rounded-xl border border-hairline bg-background p-3 text-sm outline-none focus:border-foreground"
+                  value={requestMessage}
+                  maxLength={TUTORING_MESSAGE_MAX}
+                  onChange={(e) => setRequestMessage(e.target.value)}
+                  placeholder="Goals, repertoire, or anything they should know…"
+                  className="w-full resize-none rounded-xl border border-hairline bg-background p-3 text-sm outline-none focus:border-foreground"
                 />
-                <Pill className="mt-4 w-full" disabled={!slot} onClick={() => setSent(true)}>
-                  Send request
+                <p className="mt-1 text-right text-[10px] text-muted-foreground">
+                  {requestMessage.length} / {TUTORING_MESSAGE_MAX}
+                </p>
+                <Pill
+                  className="mt-4 w-full"
+                  disabled={
+                    requestSending ||
+                    !selectedSlots.length ||
+                    offeredSlots.length === 0 ||
+                    weeks < 1
+                  }
+                  onClick={() => void sendServiceRequest()}
+                >
+                  {requestSending ? "Sending…" : "Send request"}
                 </Pill>
               </>
             )}
@@ -304,41 +452,6 @@ function InstructorProfile() {
         )}
       </AnimatePresence>
     </AppShell>
-  );
-}
-
-function MiniCalendar() {
-  const today = new Date();
-  const days = Array.from({ length: 7 }, (_, idx) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + idx);
-    return d;
-  });
-  const [picked, setPicked] = useState(0);
-  return (
-    <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5">
-      {days.map((d, idx) => {
-        const active = idx === picked;
-        return (
-          <button
-            key={idx}
-            type="button"
-            onClick={() => setPicked(idx)}
-            className={
-              "flex h-16 w-12 shrink-0 flex-col items-center justify-center rounded-xl border transition-colors " +
-              (active
-                ? "border-foreground bg-foreground text-background"
-                : "border-hairline text-muted-foreground hover:text-foreground")
-            }
-          >
-            <span className="text-[10px] uppercase tracking-widest">
-              {d.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 3)}
-            </span>
-            <span className="mt-0.5 text-base font-semibold tabular-nums">{d.getDate()}</span>
-          </button>
-        );
-      })}
-    </div>
   );
 }
 

@@ -2,6 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Pill } from "@/components/tuneacademy/Pill";
 import { Chip } from "@/components/tuneacademy/Chip";
 import { useAuth } from "@/contexts/AuthContext";
+import { InstructorWeeklyAvailabilityEditor } from "@/components/tuneacademy/InstructorWeeklyAvailabilityEditor";
+import { dedupeWeeklySlots, type WeeklyTimeSlot } from "@/lib/scheduling";
 import {
   getInstructorDoc,
   instructorOnboardingComplete,
@@ -34,6 +36,8 @@ function Onboarding() {
   const [rate, setRate] = useState("");
   const [specs, setSpecs] = useState<string[]>([]);
   const [bio, setBio] = useState("");
+  const [weeklyAvailability, setWeeklyAvailability] = useState<WeeklyTimeSlot[]>([]);
+  const [maxTutoringWeeks, setMaxTutoringWeeks] = useState("8");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -58,6 +62,10 @@ function Onboarding() {
     if (!user || loading) return;
     void getInstructorDoc(user.uid).then((inst) => {
       if (instructorOnboardingComplete(inst)) void nav({ to: "/app", replace: true });
+      else {
+        if (inst?.weeklyAvailability?.length) setWeeklyAvailability(inst.weeklyAvailability);
+        if (inst?.maxTutoringWeeks != null) setMaxTutoringWeeks(String(inst.maxTutoringWeeks));
+      }
     });
   }, [user, loading, nav]);
 
@@ -106,6 +114,15 @@ function Onboarding() {
       toast.error("Add a short bio.");
       return;
     }
+    if (weeklyAvailability.length === 0) {
+      toast.error("Choose at least one hour you are available to teach.");
+      return;
+    }
+    const maxW = Number.parseInt(maxTutoringWeeks, 10);
+    if (!Number.isFinite(maxW) || maxW < 1 || maxW > 52) {
+      toast.error("Max tutoring weeks must be between 1 and 52.");
+      return;
+    }
 
     setSaving(true);
     let avatarUrl = "";
@@ -129,6 +146,8 @@ function Onboarding() {
         specialties: specs.map(specialtyToSlug),
         bio: bio.trim(),
         hourlyRate,
+        weeklyAvailability: dedupeWeeklySlots(weeklyAvailability),
+        maxTutoringWeeks: maxW,
       });
       await refreshUserDoc();
       toast.success("Profile saved");
@@ -178,16 +197,29 @@ function Onboarding() {
       setStep(2);
       return;
     }
+    if (step === 2) {
+      if (weeklyAvailability.length === 0) {
+        toast.error("Pick at least one hour block per week.");
+        return;
+      }
+      const maxW = Number.parseInt(maxTutoringWeeks, 10);
+      if (!Number.isFinite(maxW) || maxW < 1 || maxW > 52) {
+        toast.error("Max tutoring weeks must be between 1 and 52.");
+        return;
+      }
+      setStep(3);
+      return;
+    }
   }
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 py-8">
       <div className="flex items-center justify-center gap-2">
-        {[0, 1, 2].map((i) => (
+        {[0, 1, 2, 3].map((i) => (
           <div
             key={i}
             className={
-              "h-1.5 w-10 rounded-full transition-colors " +
+              "h-1.5 w-8 rounded-full transition-colors sm:w-10 " +
               (i <= step ? "bg-foreground" : "bg-accent")
             }
           />
@@ -293,6 +325,39 @@ function Onboarding() {
 
         {step === 2 && (
           <div>
+            <h2 className="text-2xl font-bold tracking-tight">Weekly availability</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Learners only see these hours when they request tutoring. You can edit this later on
+              your profile.
+            </p>
+            <div className="mt-6 max-h-[52vh] overflow-y-auto rounded-xl border border-hairline bg-surface/60 p-4">
+              <InstructorWeeklyAvailabilityEditor
+                value={weeklyAvailability}
+                onChange={setWeeklyAvailability}
+              />
+            </div>
+            <label
+              htmlFor="onboarding-max-weeks"
+              className="mt-6 mb-2 block text-[11px] uppercase tracking-widest text-muted-foreground"
+            >
+              Maximum weeks per tutoring request
+            </label>
+            <input
+              id="onboarding-max-weeks"
+              value={maxTutoringWeeks}
+              onChange={(e) => setMaxTutoringWeeks(e.target.value)}
+              inputMode="numeric"
+              placeholder="8"
+              className="h-12 w-full rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground"
+            />
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Students cannot book a series longer than this many calendar weeks.
+            </p>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div>
             <h2 className="text-2xl font-bold tracking-tight">Short bio</h2>
             <p className="mt-1 text-sm text-muted-foreground">Up to 300 characters.</p>
             <textarea
@@ -313,11 +378,11 @@ function Onboarding() {
         className="w-full"
         disabled={saving}
         onClick={() => {
-          if (step < 2) next();
+          if (step < 3) next();
           else void completeProfile();
         }}
       >
-        {step === 2 ? (saving ? "Saving…" : "Complete profile") : "Continue"}
+        {step === 3 ? (saving ? "Saving…" : "Complete profile") : "Continue"}
       </Pill>
     </div>
   );

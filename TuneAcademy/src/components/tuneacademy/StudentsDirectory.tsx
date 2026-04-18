@@ -102,10 +102,10 @@ export function StudentsDirectory() {
               className={`inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] ${brandTheme.gold}`}
             >
               <GraduationCap className="h-4 w-4" />
-              Roster
+              Directory
             </p>
             <h1 className="mt-3 text-4xl font-black tracking-tight text-[#fffdf5] md:text-5xl">
-              Your students
+              Explore students
             </h1>
             <p className="mt-3 max-w-xl text-base leading-relaxed text-[#e8f4df]/72">
               Browse every learner on TuneAcademy, filter by vibe and instrument, open a profile to

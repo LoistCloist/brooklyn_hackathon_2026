@@ -9,7 +9,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { brandTheme } from "@/lib/theme";
 import { getFirestoreDb, getFirebaseStorage } from "@/lib/firebase";
 import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
-import { LEARNER_BIO_MAX_CHARS, updateLearnerBio } from "@/lib/tuneacademyFirestore";
+import { InstructorWeeklyAvailabilityEditor } from "@/components/tuneacademy/InstructorWeeklyAvailabilityEditor";
+import { dedupeWeeklySlots, type WeeklyTimeSlot } from "@/lib/scheduling";
+import {
+  getInstructorDoc,
+  LEARNER_BIO_MAX_CHARS,
+  updateInstructorScheduleSettings,
+  updateLearnerBio,
+} from "@/lib/tuneacademyFirestore";
 import {
   collection,
   getDocs,
@@ -104,6 +111,23 @@ function ProfileTab() {
   const [recordings, setRecordings] = useState<RecordingRow[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
+  const [scheduleSlots, setScheduleSlots] = useState<WeeklyTimeSlot[]>([]);
+  const [scheduleMaxWeeks, setScheduleMaxWeeks] = useState("8");
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleLoaded, setScheduleLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!user?.uid || !isInstructor) return;
+    setScheduleLoaded(false);
+    void getInstructorDoc(user.uid)
+      .then((inst) => {
+        if (inst?.weeklyAvailability?.length) setScheduleSlots(inst.weeklyAvailability);
+        else setScheduleSlots([]);
+        setScheduleMaxWeeks(String(inst?.maxTutoringWeeks ?? 8));
+      })
+      .finally(() => setScheduleLoaded(true));
+  }, [user?.uid, isInstructor]);
+
   useEffect(() => {
     if (!user?.uid) return;
     const db = getFirestoreDb();
@@ -173,6 +197,31 @@ function ProfileTab() {
   async function onLogout() {
     await signOutUser();
     void nav({ to: "/", replace: true });
+  }
+
+  async function saveInstructorSchedule() {
+    if (!user?.uid || !isInstructor) return;
+    const n = Number.parseInt(scheduleMaxWeeks, 10);
+    if (!Number.isFinite(n) || n < 1 || n > 52) {
+      toast.error("Max weeks must be between 1 and 52.");
+      return;
+    }
+    if (scheduleSlots.length === 0) {
+      toast.error("Pick at least one hour block.");
+      return;
+    }
+    setScheduleSaving(true);
+    try {
+      await updateInstructorScheduleSettings(user.uid, {
+        weeklyAvailability: dedupeWeeklySlots(scheduleSlots),
+        maxTutoringWeeks: n,
+      });
+      toast.success("Schedule updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save schedule.");
+    } finally {
+      setScheduleSaving(false);
+    }
   }
 
   async function saveLearnerBio() {
@@ -405,6 +454,55 @@ function ProfileTab() {
                   <p className="mt-0.5 text-xs text-[#e8f4df]/55">hourly rate</p>
                 </div>
               )}
+            </div>
+          </motion.section>
+        )}
+
+        {isInstructor && scheduleLoaded && (
+          <motion.section
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+            className="rounded-xl border border-[#2fc5b5]/25 bg-[#0b1510]/55 p-6"
+          >
+            <p className={`mb-1 text-xs font-black uppercase tracking-[0.18em] ${brandTheme.teal}`}>
+              Calendar
+            </p>
+            <h3 className="text-lg font-black text-[#fffdf5]">Teaching availability</h3>
+            <p className="mt-2 text-sm text-[#e8f4df]/60">
+              Learners only see these hours when requesting services. Busy slots from accepted
+              students are hidden automatically.
+            </p>
+            <div className="mt-5 max-h-[min(420px,55vh)] overflow-y-auto rounded-xl border border-[#fffdf5]/12 bg-[#fffdf5]/5 p-4">
+              <InstructorWeeklyAvailabilityEditor
+                variant="studio"
+                value={scheduleSlots}
+                onChange={setScheduleSlots}
+              />
+            </div>
+            <label
+              htmlFor="profile-max-weeks"
+              className="mt-5 mb-2 block text-[11px] font-black uppercase tracking-widest text-[#e8f4df]/45"
+            >
+              Max weeks per request
+            </label>
+            <input
+              id="profile-max-weeks"
+              value={scheduleMaxWeeks}
+              onChange={(e) => setScheduleMaxWeeks(e.target.value)}
+              inputMode="numeric"
+              className="h-11 w-full max-w-xs rounded-lg border border-[#fffdf5]/15 bg-[#0b1510]/70 px-3 text-sm font-semibold text-[#fffdf5] outline-none focus:border-[#ffd666]/50"
+            />
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="bg-[#ffd666] text-[#11140c] hover:bg-[#ffd666]/90"
+                disabled={scheduleSaving}
+                onClick={() => void saveInstructorSchedule()}
+              >
+                {scheduleSaving ? "Saving…" : "Save schedule"}
+              </Button>
             </div>
           </motion.section>
         )}

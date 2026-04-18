@@ -77,5 +77,42 @@ service cloud.firestore {
         && request.resource.data.senderId == request.auth.uid;
       allow update, delete: if false;
     }
+
+    match /tutoringRequests/{requestId} {
+      allow read: if request.auth != null
+        && (resource.data.learnerId == request.auth.uid
+            || resource.data.instructorId == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.learnerId == request.auth.uid
+        && request.resource.data.instructorId is string
+        && request.resource.data.status == 'pending'
+        && request.resource.data.weeks is int
+        && request.resource.data.weeks >= 1
+        && request.resource.data.weeks <= 52
+        && request.resource.data.weeklySlots is list
+        && request.resource.data.weeklySlots.size() > 0
+        && request.resource.data.message is string
+        && request.resource.data.message.size() <= 2000;
+      allow update: if request.auth != null
+        && resource.data.instructorId == request.auth.uid
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['accepted', 'declined']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if false;
+    }
+
+    match /tutoringEngagements/{engagementId} {
+      allow read: if request.auth != null
+        && (resource.data.learnerId == request.auth.uid
+            || resource.data.instructorId == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.instructorId == request.auth.uid
+        && request.resource.data.learnerId is string
+        && request.resource.data.requestId is string
+        && request.resource.data.weeks is int
+        && request.resource.data.weeklySlots is list
+        && request.resource.data.meetings is list;
+      allow update, delete: if false;
+    }
   }
 }
