@@ -68,7 +68,7 @@ function SignupPage() {
 
       toast.success("Account created");
       if (role === "instructor") nav({ to: "/onboarding", replace: true });
-      else nav({ to: "/app", replace: true });
+      else nav({ to: "/onboarding", replace: true });
     } catch (err) {
       toast.error(formatAuthError(err));
     } finally {

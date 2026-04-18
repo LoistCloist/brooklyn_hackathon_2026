@@ -242,3 +242,33 @@ export async function updateInstructorScheduleSettings(
     maxTutoringWeeks: weeks,
   });
 }
+
+export async function saveLearnerOnboarding(
+  uid: string,
+  payload: {
+    fullName: string;
+    avatarUrl: string;
+    skillLevel: "beginner" | "intermediate" | "advanced";
+    instruments: string[];
+  },
+): Promise<void> {
+  const db = getFirestoreDb();
+  await updateDoc(doc(db, "users", uid), {
+    fullName: payload.fullName,
+    avatarUrl: payload.avatarUrl,
+    skillLevel: payload.skillLevel,
+    instruments: payload.instruments,
+    onboardingComplete: true,
+  });
+}
+
+export async function uploadLearnerAvatar(uid: string, file: File): Promise<string> {
+  const storage = getFirebaseStorage();
+  const objectRef = ref(storage, `avatars/${uid}/profile`);
+  await uploadBytes(objectRef, file, { contentType: file.type || "image/jpeg" });
+  return getDownloadURL(objectRef);
+}
+
+export function learnerOnboardingComplete(user: UserFirestoreDoc | null): boolean {
+  return Boolean((user as any)?.onboardingComplete);
+}

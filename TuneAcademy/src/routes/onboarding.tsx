@@ -8,6 +8,8 @@ import {
   getInstructorDoc,
   instructorOnboardingComplete,
   saveInstructorOnboarding,
+  saveLearnerOnboarding,
+  uploadLearnerAvatar,
   specialtyToSlug,
   uploadInstructorAvatar,
 } from "@/lib/tuneacademyFirestore";
@@ -23,13 +25,22 @@ export const Route = createFileRoute("/onboarding")({
 });
 
 const SPECIALTIES = ["Voice", "Guitar", "Piano", "Saxophone", "Violin", "Drums", "Bass", "Other"];
+const INSTRUMENTS = ["Voice", "Guitar", "Piano", "Saxophone", "Violin", "Drums", "Bass", "Other"];
+const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
 
 function Onboarding() {
   const nav = useNavigate();
   const { user, userDoc, loading, refreshUserDoc } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState(0);
+
+  // shared
   const [name, setName] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // instructor fields
   const [age, setAge] = useState("");
   const [yrs, setYrs] = useState("");
   const [nationality, setNationality] = useState("");
@@ -38,9 +49,12 @@ function Onboarding() {
   const [bio, setBio] = useState("");
   const [weeklyAvailability, setWeeklyAvailability] = useState<WeeklyTimeSlot[]>([]);
   const [maxTutoringWeeks, setMaxTutoringWeeks] = useState("8");
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+
+  // learner fields
+  const [skillLevel, setSkillLevel] = useState<"beginner" | "intermediate" | "advanced" | "">("");
+  const [instruments, setInstruments] = useState<string[]>([]);
+
+  const isLearner = userDoc?.role === "learner";
 
   useEffect(() => {
     if (loading) return;
@@ -48,11 +62,7 @@ function Onboarding() {
       void nav({ to: "/login", replace: true });
       return;
     }
-    if (userDoc && userDoc.role !== "instructor") {
-      void nav({ to: "/app", replace: true });
-      return;
-    }
-  }, [loading, user, userDoc, nav]);
+  }, [loading, user, nav]);
 
   useEffect(() => {
     if (userDoc?.fullName) setName((prev) => prev || userDoc.fullName);
@@ -60,14 +70,16 @@ function Onboarding() {
 
   useEffect(() => {
     if (!user || loading) return;
-    void getInstructorDoc(user.uid).then((inst) => {
-      if (instructorOnboardingComplete(inst)) void nav({ to: "/app", replace: true });
-      else {
-        if (inst?.weeklyAvailability?.length) setWeeklyAvailability(inst.weeklyAvailability);
-        if (inst?.maxTutoringWeeks != null) setMaxTutoringWeeks(String(inst.maxTutoringWeeks));
-      }
-    });
-  }, [user, loading, nav]);
+    if (!isLearner) {
+      void getInstructorDoc(user.uid).then((inst) => {
+        if (instructorOnboardingComplete(inst)) void nav({ to: "/app", replace: true });
+        else {
+          if (inst?.weeklyAvailability?.length) setWeeklyAvailability(inst.weeklyAvailability);
+          if (inst?.maxTutoringWeeks != null) setMaxTutoringWeeks(String(inst.maxTutoringWeeks));
+        }
+      });
+    }
+  }, [user, loading, nav, isLearner]);
 
   function onPickAvatar(f: File | null) {
     setAvatarFile(f);
@@ -75,77 +87,68 @@ function Onboarding() {
     setAvatarPreview(f ? URL.createObjectURL(f) : null);
   }
 
-  async function completeProfile() {
+  // ── LEARNER SUBMIT ──────────────────────────────────────────────
+  async function completeLearnerProfile() {
     const auth = getFirebaseAuth();
     const u = auth.currentUser;
-    if (!u || !userDoc) {
-      toast.error("Session expired. Log in again.");
-      return;
-    }
-    const ageN = Number.parseInt(age, 10);
-    const yrsN = Number.parseInt(yrs, 10);
-    const rateRaw = rate.trim();
-    const hourlyRate = rateRaw === "" ? 0 : Number.parseFloat(rateRaw);
-    if (!name.trim()) {
-      toast.error("Enter your full name.");
-      return;
-    }
-    if (!Number.isFinite(ageN) || ageN < 13 || ageN > 120) {
-      toast.error("Enter a valid age.");
-      return;
-    }
-    if (!Number.isFinite(yrsN) || yrsN < 0 || yrsN > 80) {
-      toast.error("Enter valid years of experience.");
-      return;
-    }
-    if (!nationality.trim()) {
-      toast.error("Choose your nationality.");
-      return;
-    }
-    if (!Number.isFinite(hourlyRate) || hourlyRate < 0) {
-      toast.error("Enter a valid hourly rate (0 for free).");
-      return;
-    }
-    if (specs.length === 0) {
-      toast.error("Pick at least one specialty.");
-      return;
-    }
-    if (!bio.trim()) {
-      toast.error("Add a short bio.");
-      return;
-    }
-    if (weeklyAvailability.length === 0) {
-      toast.error("Choose at least one hour you are available to teach.");
-      return;
-    }
-    const maxW = Number.parseInt(maxTutoringWeeks, 10);
-    if (!Number.isFinite(maxW) || maxW < 1 || maxW > 52) {
-      toast.error("Max tutoring weeks must be between 1 and 52.");
-      return;
-    }
+    if (!u) { toast.error("Session expired."); return; }
+    if (!name.trim()) { toast.error("Enter your name."); return; }
+    if (!skillLevel) { toast.error("Select your skill level."); return; }
+    if (instruments.length === 0) { toast.error("Pick at least one instrument."); return; }
 
     setSaving(true);
     let avatarUrl = "";
     if (avatarFile) {
-      try {
-        avatarUrl = await uploadInstructorAvatar(u.uid, avatarFile);
-      } catch {
-        toast.error(
-          "Photo upload failed. Continuing without a photo — check Storage rules in Firebase.",
-        );
-      }
+      try { avatarUrl = await uploadLearnerAvatar(u.uid, avatarFile); }
+      catch { toast.error("Photo upload failed. Continuing without photo."); }
     }
-
     try {
-      await saveInstructorOnboarding(u.uid, {
+      await saveLearnerOnboarding(u.uid, {
         fullName: name.trim(),
         avatarUrl,
-        age: ageN,
-        experienceYears: yrsN,
-        nationality: nationality.trim(),
-        specialties: specs.map(specialtyToSlug),
-        bio: bio.trim(),
-        hourlyRate,
+        skillLevel: skillLevel as "beginner" | "intermediate" | "advanced",
+        instruments,
+      });
+      await refreshUserDoc();
+      toast.success("Profile saved!");
+      void nav({ to: "/app", replace: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save profile.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── INSTRUCTOR SUBMIT ───────────────────────────────────────────
+  async function completeInstructorProfile() {
+    const auth = getFirebaseAuth();
+    const u = auth.currentUser;
+    if (!u || !userDoc) { toast.error("Session expired."); return; }
+    const ageN = Number.parseInt(age, 10);
+    const yrsN = Number.parseInt(yrs, 10);
+    const hourlyRate = rate.trim() === "" ? 0 : Number.parseFloat(rate.trim());
+    if (!name.trim()) { toast.error("Enter your full name."); return; }
+    if (!Number.isFinite(ageN) || ageN < 13) { toast.error("Enter a valid age."); return; }
+    if (!Number.isFinite(yrsN) || yrsN < 0) { toast.error("Enter years of experience."); return; }
+    if (!nationality.trim()) { toast.error("Choose your nationality."); return; }
+    if (!Number.isFinite(hourlyRate) || hourlyRate < 0) { toast.error("Enter a valid hourly rate."); return; }
+    if (specs.length === 0) { toast.error("Pick at least one specialty."); return; }
+    if (!bio.trim()) { toast.error("Add a short bio."); return; }
+    if (weeklyAvailability.length === 0) { toast.error("Choose at least one available hour."); return; }
+    const maxW = Number.parseInt(maxTutoringWeeks, 10);
+    if (!Number.isFinite(maxW) || maxW < 1 || maxW > 52) { toast.error("Max weeks must be 1–52."); return; }
+
+    setSaving(true);
+    let avatarUrl = "";
+    if (avatarFile) {
+      try { avatarUrl = await uploadInstructorAvatar(u.uid, avatarFile); }
+      catch { toast.error("Photo upload failed."); }
+    }
+    try {
+      await saveInstructorOnboarding(u.uid, {
+        fullName: name.trim(), avatarUrl, age: ageN, experienceYears: yrsN,
+        nationality: nationality.trim(), specialties: specs.map(specialtyToSlug),
+        bio: bio.trim(), hourlyRate,
         weeklyAvailability: dedupeWeeklySlots(weeklyAvailability),
         maxTutoringWeeks: maxW,
       });
@@ -153,8 +156,7 @@ function Onboarding() {
       toast.success("Profile saved");
       void nav({ to: "/app", replace: true });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not save profile.";
-      toast.error(msg);
+      toast.error(err instanceof Error ? err.message : "Could not save profile.");
     } finally {
       setSaving(false);
     }
@@ -162,60 +164,37 @@ function Onboarding() {
 
   function next() {
     if (step === 0) {
-      if (!name.trim()) {
-        toast.error("Enter your name.");
-        return;
-      }
-      setStep(1);
-      return;
+      if (!name.trim()) { toast.error("Enter your name."); return; }
+      setStep(1); return;
     }
-    if (step === 1) {
-      const ageN = Number.parseInt(age, 10);
-      const yrsN = Number.parseInt(yrs, 10);
-      const rateRaw = rate.trim();
-      const hourlyRate = rateRaw === "" ? 0 : Number.parseFloat(rateRaw);
-      if (!Number.isFinite(ageN) || ageN < 13) {
-        toast.error("Enter a valid age.");
-        return;
+    if (!isLearner) {
+      if (step === 1) {
+        const ageN = Number.parseInt(age, 10);
+        const yrsN = Number.parseInt(yrs, 10);
+        const hourlyRate = rate.trim() === "" ? 0 : Number.parseFloat(rate.trim());
+        if (!Number.isFinite(ageN) || ageN < 13) { toast.error("Enter a valid age."); return; }
+        if (!Number.isFinite(yrsN) || yrsN < 0) { toast.error("Enter years of experience."); return; }
+        if (!nationality.trim()) { toast.error("Choose your nationality."); return; }
+        if (!Number.isFinite(hourlyRate) || hourlyRate < 0) { toast.error("Enter a valid rate."); return; }
+        if (specs.length === 0) { toast.error("Pick at least one specialty."); return; }
+        setStep(2); return;
       }
-      if (!Number.isFinite(yrsN) || yrsN < 0) {
-        toast.error("Enter years of experience.");
-        return;
+      if (step === 2) {
+        if (weeklyAvailability.length === 0) { toast.error("Pick at least one hour block."); return; }
+        const maxW = Number.parseInt(maxTutoringWeeks, 10);
+        if (!Number.isFinite(maxW) || maxW < 1 || maxW > 52) { toast.error("Max weeks must be 1–52."); return; }
+        setStep(3); return;
       }
-      if (!nationality.trim()) {
-        toast.error("Choose your nationality.");
-        return;
-      }
-      if (!Number.isFinite(hourlyRate) || hourlyRate < 0) {
-        toast.error("Enter a valid hourly rate (or leave blank for free).");
-        return;
-      }
-      if (specs.length === 0) {
-        toast.error("Pick at least one specialty.");
-        return;
-      }
-      setStep(2);
-      return;
-    }
-    if (step === 2) {
-      if (weeklyAvailability.length === 0) {
-        toast.error("Pick at least one hour block per week.");
-        return;
-      }
-      const maxW = Number.parseInt(maxTutoringWeeks, 10);
-      if (!Number.isFinite(maxW) || maxW < 1 || maxW > 52) {
-        toast.error("Max tutoring weeks must be between 1 and 52.");
-        return;
-      }
-      setStep(3);
-      return;
     }
   }
 
+  const totalSteps = isLearner ? 2 : 4;
+
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 py-8">
+      {/* Progress dots */}
       <div className="flex items-center justify-center gap-2">
-        {[0, 1, 2, 3].map((i) => (
+        {Array.from({ length: totalSteps }).map((_, i) => (
           <div
             key={i}
             className={
@@ -227,162 +206,141 @@ function Onboarding() {
       </div>
 
       <div className="mt-10 flex-1">
+
+        {/* ── STEP 0: Name + Photo (shared) ── */}
         {step === 0 && (
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Your profile</h2>
             <p className="mt-1 text-sm text-muted-foreground">A photo and your name.</p>
             <div className="mt-8 flex flex-col items-center gap-4">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => onPickAvatar(e.target.files?.[0] ?? null)}
-              />
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border border-dashed border-hairline bg-surface text-muted-foreground hover:border-foreground hover:text-foreground"
-              >
-                {avatarPreview ? (
-                  <img src={avatarPreview} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <Camera className="h-7 w-7" />
-                )}
+              <input ref={fileRef} type="file" accept="image/*" className="hidden"
+                onChange={(e) => onPickAvatar(e.target.files?.[0] ?? null)} />
+              <button type="button" onClick={() => fileRef.current?.click()}
+                className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border border-dashed border-hairline bg-surface text-muted-foreground hover:border-foreground hover:text-foreground">
+                {avatarPreview
+                  ? <img src={avatarPreview} alt="" className="h-full w-full object-cover" />
+                  : <Camera className="h-7 w-7" />}
               </button>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Full name"
-                className="h-12 w-full rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground"
-              />
+              <input value={name} onChange={(e) => setName(e.target.value)}
+                placeholder="Full name *"
+                className="h-12 w-full rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground" />
             </div>
           </div>
         )}
 
-        {step === 1 && (
+        {/* ── LEARNER STEP 1: Skill level + instruments ── */}
+        {step === 1 && isLearner && (
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">Your details</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Tell us what you teach.</p>
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <input
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
-                inputMode="numeric"
-                placeholder="Age"
-                className="h-12 rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground"
-              />
-              <input
-                value={yrs}
-                onChange={(e) => setYrs(e.target.value)}
-                inputMode="numeric"
-                placeholder="Years experience"
-                className="h-12 rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground"
-              />
-            </div>
-            <label htmlFor="onboarding-nationality" className="sr-only">
-              Nationality
-            </label>
-            <select
-              id="onboarding-nationality"
-              value={nationality}
-              onChange={(e) => setNationality(e.target.value)}
-              className="mt-3 h-12 w-full cursor-pointer rounded-xl border border-hairline bg-surface px-4 text-sm text-foreground outline-none focus:border-foreground"
-            >
-              <option value="">Select nationality…</option>
-              {NATIONALITY_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
+            <h2 className="text-2xl font-bold tracking-tight">Your music journey</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Help us personalise your experience.</p>
+
             <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
-              Specialties
+              Skill level <span className="text-red-400">*</span>
             </p>
-            <div className="flex flex-wrap gap-2">
-              {SPECIALTIES.map((s) => {
-                const active = specs.includes(s);
+            <div className="flex gap-3">
+              {SKILL_LEVELS.map((level) => {
+                const active = skillLevel === level.toLowerCase();
                 return (
-                  <Chip
-                    key={s}
-                    active={active}
-                    onClick={() => setSpecs((v) => (active ? v.filter((x) => x !== s) : [...v, s]))}
-                  >
-                    {s}
+                  <Chip key={level} active={active}
+                    onClick={() => setSkillLevel(level.toLowerCase() as any)}>
+                    {level}
                   </Chip>
                 );
               })}
             </div>
-            <input
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-              inputMode="decimal"
-              placeholder="Hourly rate ($) — leave blank if free"
-              className="mt-6 h-12 w-full rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground"
-            />
+
+            <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
+              Instruments <span className="text-red-400">*</span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {INSTRUMENTS.map((inst) => {
+                const active = instruments.includes(inst);
+                return (
+                  <Chip key={inst} active={active}
+                    onClick={() => setInstruments((v) => active ? v.filter((x) => x !== inst) : [...v, inst])}>
+                    {inst}
+                  </Chip>
+                );
+              })}
+            </div>
+
+            <p className="mt-6 text-xs text-muted-foreground">
+              You can update these anytime from your profile.
+            </p>
           </div>
         )}
 
-        {step === 2 && (
+        {/* ── INSTRUCTOR STEPS (unchanged) ── */}
+        {step === 1 && !isLearner && (
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Your details</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Tell us what you teach.</p>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <input value={age} onChange={(e) => setAge(e.target.value)} inputMode="numeric"
+                placeholder="Age *"
+                className="h-12 rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground" />
+              <input value={yrs} onChange={(e) => setYrs(e.target.value)} inputMode="numeric"
+                placeholder="Years experience *"
+                className="h-12 rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground" />
+            </div>
+            <select value={nationality} onChange={(e) => setNationality(e.target.value)}
+              className="mt-3 h-12 w-full cursor-pointer rounded-xl border border-hairline bg-surface px-4 text-sm text-foreground outline-none focus:border-foreground">
+              <option value="">Select nationality… *</option>
+              {NATIONALITY_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">Specialties *</p>
+            <div className="flex flex-wrap gap-2">
+              {SPECIALTIES.map((s) => {
+                const active = specs.includes(s);
+                return <Chip key={s} active={active}
+                  onClick={() => setSpecs((v) => active ? v.filter((x) => x !== s) : [...v, s])}>{s}</Chip>;
+              })}
+            </div>
+            <input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal"
+              placeholder="Hourly rate ($) — leave blank if free"
+              className="mt-6 h-12 w-full rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground" />
+          </div>
+        )}
+
+        {step === 2 && !isLearner && (
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Weekly availability</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Learners only see these hours when they request tutoring. You can edit this later on
-              your profile.
-            </p>
+            <p className="mt-1 text-sm text-muted-foreground">Learners only see these hours when they request tutoring.</p>
             <div className="mt-6 max-h-[52vh] overflow-y-auto rounded-xl border border-hairline bg-surface/60 p-4">
-              <InstructorWeeklyAvailabilityEditor
-                value={weeklyAvailability}
-                onChange={setWeeklyAvailability}
-              />
+              <InstructorWeeklyAvailabilityEditor value={weeklyAvailability} onChange={setWeeklyAvailability} />
             </div>
-            <label
-              htmlFor="onboarding-max-weeks"
-              className="mt-6 mb-2 block text-[11px] uppercase tracking-widest text-muted-foreground"
-            >
+            <label htmlFor="max-weeks" className="mt-6 mb-2 block text-[11px] uppercase tracking-widest text-muted-foreground">
               Maximum weeks per tutoring request
             </label>
-            <input
-              id="onboarding-max-weeks"
-              value={maxTutoringWeeks}
-              onChange={(e) => setMaxTutoringWeeks(e.target.value)}
-              inputMode="numeric"
-              placeholder="8"
-              className="h-12 w-full rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground"
-            />
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              Students cannot book a series longer than this many calendar weeks.
-            </p>
+            <input id="max-weeks" value={maxTutoringWeeks} onChange={(e) => setMaxTutoringWeeks(e.target.value)}
+              inputMode="numeric" placeholder="8"
+              className="h-12 w-full rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground" />
           </div>
         )}
 
-        {step === 3 && (
+        {step === 3 && !isLearner && (
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Short bio</h2>
             <p className="mt-1 text-sm text-muted-foreground">Up to 300 characters.</p>
-            <textarea
-              value={bio}
-              maxLength={300}
-              onChange={(e) => setBio(e.target.value)}
-              rows={6}
-              placeholder="What's your teaching style?"
-              className="mt-6 w-full resize-none rounded-xl border border-hairline bg-surface p-4 text-sm outline-none focus:border-foreground"
-            />
+            <textarea value={bio} maxLength={300} onChange={(e) => setBio(e.target.value)}
+              rows={6} placeholder="What's your teaching style? *"
+              className="mt-6 w-full resize-none rounded-xl border border-hairline bg-surface p-4 text-sm outline-none focus:border-foreground" />
             <p className="mt-1 text-right text-[11px] text-muted-foreground">{bio.length}/300</p>
           </div>
         )}
       </div>
 
-      <Pill
-        size="lg"
-        className="w-full"
-        disabled={saving}
+      <Pill size="lg" className="w-full" disabled={saving}
         onClick={() => {
-          if (step < 3) next();
-          else void completeProfile();
-        }}
-      >
-        {step === 3 ? (saving ? "Saving…" : "Complete profile") : "Continue"}
+          if (isLearner) {
+            if (step < 1) next();
+            else void completeLearnerProfile();
+          } else {
+            if (step < 3) next();
+            else void completeInstructorProfile();
+          }
+        }}>
+        {saving ? "Saving…" : step === (isLearner ? 1 : 3) ? "Complete profile" : "Continue"}
       </Pill>
     </div>
   );
