@@ -116,7 +116,7 @@ function Welcome() {
           </motion.section>
 
           <motion.section
-            className="relative min-h-[600px] w-full max-w-[560px] justify-self-center xl:min-h-[560px] xl:justify-self-end"
+            className="relative min-h-150 w-full max-w-140 justify-self-center xl:min-h-140 xl:justify-self-end"
             initial={{ opacity: 0, x: 26 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
@@ -130,7 +130,7 @@ function Welcome() {
               />
             </div>
 
-            <div className={`absolute right-0 top-0 w-full max-w-[380px] rounded-lg p-5 ${brandTheme.glass}`}>
+            <div className={`absolute right-0 top-0 w-full max-w-95 rounded-lg p-5 ${brandTheme.glass}`}>
               <div className="flex items-center justify-between text-xs font-bold uppercase tracking-[0.18em] text-[#a6eee3]">
                 <span>AI take review</span>
                 <span>02:14</span>
@@ -163,7 +163,7 @@ function Welcome() {
               </p>
             </div>
 
-            <div className="absolute bottom-0 left-0 w-full max-w-[430px] rounded-lg border border-[#ffd666]/35 bg-[#ffd666] p-5 text-[#11140c] shadow-[0_24px_70px_rgba(0,0,0,0.32)] sm:left-20 xl:left-10">
+            <div className="absolute bottom-0 left-0 w-full max-w-107.5 rounded-lg border border-[#ffd666]/35 bg-[#ffd666] p-5 text-[#11140c] shadow-[0_24px_70px_rgba(0,0,0,0.32)] sm:left-20 xl:left-10">
               <p className="text-xs font-black uppercase tracking-[0.2em]">Match found</p>
               <div className="mt-4 flex items-center gap-4">
                 <img
