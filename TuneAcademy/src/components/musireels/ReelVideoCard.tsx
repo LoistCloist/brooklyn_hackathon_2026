@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Heart, Loader2, MessageCircle, Play, UserPlus } from "lucide-react";
-import { InstrumentIcon } from "@/components/musilearn/InstrumentIcon";
+import { InstrumentIcon } from "@/components/tuneacademy/InstrumentIcon";
 import type { Instrument } from "@/lib/mockData";
 import { useLike } from "@/hooks/useLike";
 import type { Reel } from "@/types";
@@ -48,6 +48,8 @@ export function ReelVideoCard({
   const [buffering, setBuffering] = useState(true);
   const [likePulse, setLikePulse] = useState(0);
   const [manualPauseUi, setManualPauseUi] = useState(false);
+  /** Unmute only after a tap on the video so autoplay stays allowed while browsing. */
+  const [soundEnabled, setSoundEnabled] = useState(false);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -55,6 +57,7 @@ export function ReelVideoCard({
     if (!isActive) {
       userPausedRef.current = false;
       setManualPauseUi(false);
+      setSoundEnabled(false);
       el.pause();
       return;
     }
@@ -69,6 +72,16 @@ export function ReelVideoCard({
   const togglePausePlay = () => {
     const el = videoRef.current;
     if (!el || !reel.videoUrl || !isActive) return;
+    if (!soundEnabled) {
+      setSoundEnabled(true);
+      el.muted = false;
+      if (el.paused) {
+        userPausedRef.current = false;
+        void el.play().catch(() => {});
+        setManualPauseUi(false);
+      }
+      return;
+    }
     if (el.paused) {
       userPausedRef.current = false;
       void el.play().catch(() => {});
@@ -93,7 +106,7 @@ export function ReelVideoCard({
         ref={videoRef}
         src={reel.videoUrl}
         className="absolute inset-0 h-full w-full cursor-pointer object-cover select-none"
-        muted
+        muted={!isActive || !soundEnabled}
         playsInline
         loop
         controls={false}
@@ -192,7 +205,11 @@ export function ReelVideoCard({
             key={likePulse}
             initial={{ scale: 1 }}
             animate={{ scale: likePulse > 0 ? [1, 1.3, 1] : 1 }}
-            transition={{ type: "spring", stiffness: 420, damping: 14 }}
+            transition={
+              likePulse > 0
+                ? { type: "tween", duration: 0.42, ease: [0.22, 1, 0.36, 1] }
+                : { duration: 0 }
+            }
           >
             <Heart className={cn("h-7 w-7", isLiked && "fill-white text-white")} />
           </motion.span>

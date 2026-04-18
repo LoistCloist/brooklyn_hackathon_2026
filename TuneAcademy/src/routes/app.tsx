@@ -62,7 +62,7 @@ function AppLayout() {
     );
   }
 
-  if (!bypassAuth && userDoc.role === "instructor" && instructorCheck === "pending") {
+  if (!bypassAuth && userDoc && userDoc.role === "instructor" && instructorCheck === "pending") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
         Loading…

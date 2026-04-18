@@ -11,9 +11,6 @@ import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
 import { useInstructorInvitationReelIds } from "@/hooks/useInstructorInvitationReelIds";
 import { useReels } from "@/hooks/useReels";
 import type { Reel } from "@/types";
-import { reels } from "@/lib/mockData";
-import { Heart, MessageCircle, Play } from "lucide-react";
-import { InstrumentIcon } from "@/components/tuneacademy/InstrumentIcon";
 
 const musireelsSearchSchema = z.object({
   reel: z.string().optional(),
@@ -26,7 +23,8 @@ export const Route = createFileRoute("/app/musireels")({
   component: Musireels,
 });
 
-const SLIDE_PX = "calc(100dvh - 4rem)";
+/** Full viewport height; top nav is overlay-only (no bottom chrome to reserve). */
+const SLIDE_PX = "100dvh";
 
 function Musireels() {
   const { user, userDoc } = useAuth();
@@ -100,21 +98,21 @@ function Musireels() {
   return (
     <div className="relative mx-auto h-[100dvh] w-full max-w-md overflow-hidden bg-black text-foreground">
       {loading ? (
-        <div className="flex h-[calc(100dvh-4rem)] items-center justify-center text-sm text-muted-foreground">
+        <div className="flex h-[100dvh] items-center justify-center text-sm text-muted-foreground">
           Loading reels…
         </div>
       ) : error ? (
-        <div className="flex h-[calc(100dvh-4rem)] items-center justify-center px-6 text-center text-sm text-destructive">
+        <div className="flex h-[100dvh] items-center justify-center px-6 text-center text-sm text-destructive">
           {error}
         </div>
       ) : reels.length === 0 ? (
-        <div className="flex h-[calc(100dvh-4rem)] items-center justify-center px-6 text-center text-sm text-muted-foreground">
+        <div className="flex h-[100dvh] items-center justify-center px-6 text-center text-sm text-muted-foreground">
           <p className="text-base font-medium text-foreground/90">No reels have been posted yet.</p>
         </div>
       ) : (
         <div
           ref={scrollRef}
-          className="h-[calc(100dvh-4rem)] snap-y snap-mandatory overflow-y-scroll overscroll-y-contain"
+          className="h-[100dvh] snap-y snap-mandatory overflow-y-scroll overscroll-y-contain"
         >
           {reels.map((reel) => (
             <section
@@ -145,7 +143,7 @@ function Musireels() {
       <button
         type="button"
         onClick={() => setCreateOpen(true)}
-        className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-50 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-white text-black shadow-lg ring-1 ring-black/10 transition hover:bg-white/90"
+        className="fixed bottom-[max(0.35rem,env(safe-area-inset-bottom,0px)+0.35rem)] left-1/2 z-50 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-white text-black shadow-lg ring-1 ring-black/10 transition hover:bg-white/90"
         aria-label="Create reel"
       >
         <Plus className="h-7 w-7" strokeWidth={2.2} />
