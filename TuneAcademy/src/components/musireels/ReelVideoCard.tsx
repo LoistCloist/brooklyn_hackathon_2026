@@ -145,29 +145,15 @@ export function ReelVideoCard({
         </div>
       ) : null}
 
-      {showRecruit ? (
-        <button
-          type="button"
-          disabled={recruitDisabled}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRecruit();
-          }}
-          className={cn(
-            "absolute right-3 top-12 z-20 flex items-center gap-1.5 rounded-full border border-black bg-white px-3 py-1.5 text-xs font-semibold text-black shadow-sm",
-            recruitDisabled && "opacity-40",
-          )}
-        >
-          <UserPlus className="h-3.5 w-3.5" />
-          Recruit
-        </button>
-      ) : null}
-
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30" />
 
       <Link
         to="/app/learner/$userId"
         params={{ userId: reel.uploaderId }}
+        search={{
+          displayName: reel.uploaderName.trim() || undefined,
+          avatarUrl: reel.uploaderAvatarUrl.trim() || undefined,
+        }}
         className="pointer-events-auto absolute bottom-24 left-5 right-24 z-20 text-left text-foreground"
       >
         <div className="flex items-start gap-3">
@@ -227,6 +213,24 @@ export function ReelVideoCard({
           <MessageCircle className="h-7 w-7" />
           <span className="text-[10px] tabular-nums">{reel.commentsCount}</span>
         </button>
+        {showRecruit ? (
+          <button
+            type="button"
+            disabled={recruitDisabled}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRecruit();
+            }}
+            className={cn(
+              "flex flex-col items-center gap-1",
+              recruitDisabled && "opacity-40",
+            )}
+            aria-label="Recruit learner"
+          >
+            <UserPlus className="h-7 w-7" />
+            <span className="text-[10px] font-semibold">Recruit</span>
+          </button>
+        ) : null}
       </div>
 
       {!reel.videoUrl ? (

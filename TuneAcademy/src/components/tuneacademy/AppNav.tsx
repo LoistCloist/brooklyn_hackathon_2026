@@ -1,16 +1,27 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { Home, PlayCircle, Users, Mic } from "lucide-react";
+import { GraduationCap, Home, MessageSquareText, Mic, PlayCircle, Users } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
-const tabs = [
+const learnerNavTabs = [
   { to: "/app", label: "Home", icon: Home, exact: true },
   { to: "/app/musireels", label: "Musireels", icon: PlayCircle },
   { to: "/app/instructors", label: "Instructors", icon: Users },
+  { to: "/app/messages", label: "Messages", icon: MessageSquareText },
   { to: "/app/analyze", label: "Analyze", icon: Mic },
+];
+
+const instructorNavTabs = [
+  { to: "/app", label: "Home", icon: Home, exact: true },
+  { to: "/app/musireels", label: "Musireels", icon: PlayCircle },
+  { to: "/app/students", label: "Students", icon: GraduationCap },
+  { to: "/app/messages", label: "Messages", icon: MessageSquareText },
 ];
 
 export function AppNav() {
   const { pathname } = useLocation();
+  const { userDoc } = useAuth();
+  const tabs = userDoc?.role === "instructor" ? instructorNavTabs : learnerNavTabs;
   return (
     <nav className="fixed inset-x-0 top-0 z-40 border-b border-[#fffdf5]/15 bg-[#0b1510]/86 backdrop-blur-xl">
       <div className="mx-auto flex h-18 max-w-7xl items-center justify-between px-6 lg:px-10">

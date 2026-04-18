@@ -1,10 +1,25 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/tuneacademy/AppShell";
 import { Avatar } from "@/components/tuneacademy/Avatar";
 import { Pill } from "@/components/tuneacademy/Pill";
+import { useAuth } from "@/contexts/AuthContext";
 import { brandTheme } from "@/lib/theme";
-import { ArrowRight, CalendarDays, Flame, Mic, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowRight, CalendarDays, Flame, LogOut, Mic, Sparkles, TrendingUp } from "lucide-react";
 import { motion } from "framer-motion";
+
+function initialsFromProfile(fullName: string | undefined, email: string | undefined): string {
+  const name = fullName?.trim();
+  if (name) {
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0] ?? ""}${parts[parts.length - 1]?.[0] ?? ""}`.toUpperCase() || "TA";
+  }
+  const local = email?.split("@")[0]?.trim();
+  if (local && local.length >= 2) return local.slice(0, 2).toUpperCase();
+  if (local?.[0]) return local[0].toUpperCase();
+  return "TA";
+}
 
 export const Route = createFileRoute("/app/")({
   head: () => ({ meta: [{ title: "Home - TuneAcademy" }] }),
@@ -30,6 +45,15 @@ const progressBars = [
 ];
 
 function HomeTab() {
+  const nav = useNavigate();
+  const { userDoc, signOutUser } = useAuth();
+  const initials = initialsFromProfile(userDoc?.fullName, userDoc?.email);
+
+  async function onLogout() {
+    await signOutUser();
+    void nav({ to: "/", replace: true });
+  }
+
   return (
     <AppShell>
       <header className="pt-8">
@@ -42,7 +66,32 @@ function HomeTab() {
               Today's studio
             </h1>
           </div>
-          <Avatar initials="JD" size={46} />
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd666]/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1510]"
+                aria-label="Account menu"
+              >
+                <Avatar initials={initials} size={46} />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                className="z-50 min-w-[11rem] rounded-lg border border-[#fffdf5]/15 bg-[#0b1510] p-1 shadow-[0_16px_48px_rgba(0,0,0,0.45)]"
+                sideOffset={10}
+                align="end"
+              >
+                <DropdownMenu.Item
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[#fffdf5] outline-none data-[highlighted]:bg-[#fffdf5]/10 data-[disabled]:opacity-40"
+                  onSelect={() => void onLogout()}
+                >
+                  <LogOut className="h-4 w-4 shrink-0 text-[#e8f4df]/80" />
+                  Log out
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         </div>
       </header>
 
@@ -67,9 +116,9 @@ function HomeTab() {
                   Fix your weak spots.
                 </h2>
                 <p className="mt-5 max-w-xl text-lg leading-8 text-[#e8f4df]/80">
-                  Record a short take and TuneAcademy's AI will listen for timing, pitch, tone,
-                  and consistency. You'll get a clear breakdown of what is working and what to
-                  practice next.
+                  Record a short take and TuneAcademy's AI will listen for timing, pitch, tone, and
+                  consistency. You'll get a clear breakdown of what is working and what to practice
+                  next.
                 </p>
                 <Link to="/app/analyze">
                   <Pill className={`mt-7 px-8 ${brandTheme.primaryButton}`} size="lg">
@@ -171,14 +220,24 @@ function HomeTab() {
               </p>
             </div>
 
-            <Link
-              to="/app/instructors"
-              search={{ weakness: "Rhythm" }}
-              className="flex items-center justify-between rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-4 text-sm font-bold text-[#fffdf5] transition hover:bg-[#fffdf5]/14"
-            >
-              Browse instructor matches
-              <ArrowRight className="h-4 w-4" />
-            </Link>
+            {userDoc?.role === "instructor" ? (
+              <Link
+                to="/app/students"
+                className="flex items-center justify-between rounded-lg border border-[#ffd666]/35 bg-[#ffd666]/12 p-4 text-sm font-bold text-[#ffd666] transition hover:bg-[#ffd666]/18"
+              >
+                Open student roster
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            ) : (
+              <Link
+                to="/app/instructors"
+                search={{ weakness: "Rhythm" }}
+                className="flex items-center justify-between rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-4 text-sm font-bold text-[#fffdf5] transition hover:bg-[#fffdf5]/14"
+              >
+                Browse instructor matches
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            )}
           </section>
         </aside>
       </main>

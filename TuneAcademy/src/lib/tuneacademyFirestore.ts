@@ -19,6 +19,7 @@ export type InstructorFirestoreDoc = {
   avatarUrl: string;
   age: number;
   experienceYears: number;
+  nationality?: string;
   specialties: string[];
   bio: string;
   hourlyRate: number;
@@ -82,6 +83,7 @@ export async function saveInstructorOnboarding(
     avatarUrl: string;
     age: number;
     experienceYears: number;
+    nationality: string;
     specialties: string[];
     bio: string;
     hourlyRate: number;
@@ -93,6 +95,7 @@ export async function saveInstructorOnboarding(
     avatarUrl: payload.avatarUrl,
     age: payload.age,
     experienceYears: payload.experienceYears,
+    nationality: payload.nationality,
     specialties: payload.specialties,
     bio: payload.bio,
     hourlyRate: payload.hourlyRate,

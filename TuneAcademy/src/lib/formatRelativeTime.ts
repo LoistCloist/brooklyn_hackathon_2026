@@ -1,9 +1,11 @@
 import { formatDistanceToNow } from "date-fns";
-import type { Timestamp } from "firebase/firestore";
+import { firestoreLikeToMillis } from "@/lib/firestoreTime";
 
-export function formatRelativeTime(ts: Timestamp): string {
+export function formatRelativeTime(ts: unknown): string {
+  const ms = firestoreLikeToMillis(ts);
+  if (ms == null) return "";
   try {
-    return formatDistanceToNow(ts.toDate(), { addSuffix: true });
+    return formatDistanceToNow(new Date(ms), { addSuffix: true });
   } catch {
     return "";
   }

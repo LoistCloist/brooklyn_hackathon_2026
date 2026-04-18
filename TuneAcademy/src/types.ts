@@ -29,8 +29,17 @@ export interface Invitation {
   instructorId: string;
   instructorName: string;
   learnerId: string;
+  /** Denormalized for UI; optional on older documents */
+  learnerName?: string;
   reelId: string;
   message: string;
   status: "pending" | "accepted" | "declined";
+  createdAt: Timestamp;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  text: string;
   createdAt: Timestamp;
 }

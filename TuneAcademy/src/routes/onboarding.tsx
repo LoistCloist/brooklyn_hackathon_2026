@@ -10,6 +10,7 @@ import {
   uploadInstructorAvatar,
 } from "@/lib/tuneacademyFirestore";
 import { getFirebaseAuth } from "@/lib/firebase";
+import { NATIONALITY_OPTIONS } from "@/lib/nationalityOptions";
 import { Camera } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -29,6 +30,7 @@ function Onboarding() {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
   const [yrs, setYrs] = useState("");
+  const [nationality, setNationality] = useState("");
   const [rate, setRate] = useState("");
   const [specs, setSpecs] = useState<string[]>([]);
   const [bio, setBio] = useState("");
@@ -88,6 +90,10 @@ function Onboarding() {
       toast.error("Enter valid years of experience.");
       return;
     }
+    if (!nationality.trim()) {
+      toast.error("Choose your nationality.");
+      return;
+    }
     if (!Number.isFinite(hourlyRate) || hourlyRate < 0) {
       toast.error("Enter a valid hourly rate (0 for free).");
       return;
@@ -119,6 +125,7 @@ function Onboarding() {
         avatarUrl,
         age: ageN,
         experienceYears: yrsN,
+        nationality: nationality.trim(),
         specialties: specs.map(specialtyToSlug),
         bio: bio.trim(),
         hourlyRate,
@@ -154,6 +161,10 @@ function Onboarding() {
       }
       if (!Number.isFinite(yrsN) || yrsN < 0) {
         toast.error("Enter years of experience.");
+        return;
+      }
+      if (!nationality.trim()) {
+        toast.error("Choose your nationality.");
         return;
       }
       if (!Number.isFinite(hourlyRate) || hourlyRate < 0) {
@@ -237,6 +248,22 @@ function Onboarding() {
                 className="h-12 rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground"
               />
             </div>
+            <label htmlFor="onboarding-nationality" className="sr-only">
+              Nationality
+            </label>
+            <select
+              id="onboarding-nationality"
+              value={nationality}
+              onChange={(e) => setNationality(e.target.value)}
+              className="mt-3 h-12 w-full cursor-pointer rounded-xl border border-hairline bg-surface px-4 text-sm text-foreground outline-none focus:border-foreground"
+            >
+              <option value="">Select nationality…</option>
+              {NATIONALITY_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
             <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
               Specialties
             </p>

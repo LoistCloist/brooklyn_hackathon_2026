@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { getFirestoreDb } from "@/lib/firebase";
+import { chatIdForUserPair } from "@/lib/messaging";
 import type { InstructorFirestoreDoc, UserFirestoreDoc } from "@/lib/musilearnFirestore";
 import type { Reel } from "@/types";
 
@@ -41,7 +42,12 @@ type Props = {
 };
 
 function formatJoined(ts: unknown): string {
-  if (ts && typeof ts === "object" && "toDate" in ts && typeof (ts as { toDate: () => Date }).toDate === "function") {
+  if (
+    ts &&
+    typeof ts === "object" &&
+    "toDate" in ts &&
+    typeof (ts as { toDate: () => Date }).toDate === "function"
+  ) {
     return (ts as { toDate: () => Date }).toDate().toLocaleDateString();
   }
   return "—";
@@ -137,12 +143,13 @@ export function RecruitDialog({
         instructorId,
         instructorName,
         learnerId,
+        learnerName,
         reelId: reel.id,
         message: text,
         status: "pending",
         createdAt: serverTimestamp(),
       });
-      const chatId = [instructorId, learnerId].sort().join("_");
+      const chatId = chatIdForUserPair(instructorId, learnerId);
       const msgRef = doc(collection(db, "messages", chatId, "messages"));
       batch.set(msgRef, {
         senderId: instructorId,
@@ -172,7 +179,9 @@ export function RecruitDialog({
         ) : (
           <div className="space-y-4 text-sm">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Learner
+              </p>
               <div className="mt-2 flex items-center gap-3">
                 <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-full bg-muted text-2xl font-bold">
                   {(learnerName[0] ?? "?").toUpperCase()}
@@ -186,7 +195,9 @@ export function RecruitDialog({
 
             {report ? (
               <div className="rounded-lg border border-border bg-muted/30 p-3">
-                <p className="font-medium capitalize">{String(report.instrument ?? "Instrument")}</p>
+                <p className="font-medium capitalize">
+                  {String(report.instrument ?? "Instrument")}
+                </p>
                 <p className="mt-2 font-semibold">
                   Score: {typeof report.overallScore === "number" ? report.overallScore : "—"} / 100
                 </p>
@@ -200,7 +211,9 @@ export function RecruitDialog({
                 <p className="mt-2 text-xs text-muted-foreground">Based on latest analysis</p>
               </div>
             ) : (
-              <p className="text-muted-foreground">This learner has not submitted an analysis yet.</p>
+              <p className="text-muted-foreground">
+                This learner has not submitted an analysis yet.
+              </p>
             )}
 
             <div>
@@ -214,13 +227,20 @@ export function RecruitDialog({
                 className="min-h-[100px]"
                 disabled={posting}
               />
-              <p className="mt-1 text-right text-xs text-muted-foreground">{message.length} / 500</p>
+              <p className="mt-1 text-right text-xs text-muted-foreground">
+                {message.length} / 500
+              </p>
             </div>
           </div>
         )}
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={posting}>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={posting}
+          >
             Cancel
           </Button>
           <Button type="button" onClick={() => void send()} disabled={posting || loading}>
