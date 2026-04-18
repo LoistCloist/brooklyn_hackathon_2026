@@ -59,14 +59,17 @@ function HomeTab() {
               <div className="relative max-w-2xl">
                 <div className="inline-flex items-center gap-2 rounded-lg bg-[#ffd666] px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-[#11140c]">
                   <Flame className="h-4 w-4" />
-                  Warmup ready
+                  AI performance review
                 </div>
-                <h2 className="mt-6 max-w-3xl text-6xl font-black leading-[0.9] tracking-normal">
-                  Make the next take cleaner.
+                <h2 className="mt-6 max-w-3xl text-5xl font-black leading-[0.95] tracking-normal">
+                  Find your strengths.
+                  <br />
+                  Fix your weak spots.
                 </h2>
                 <p className="mt-5 max-w-xl text-lg leading-8 text-[#e8f4df]/80">
-                  Placeholder plan based on your recent recordings. The real feed can plug in here
-                  once the backend data is connected.
+                  Record a short take and TuneAcademy's AI will listen for timing, pitch, tone,
+                  and consistency. You'll get a clear breakdown of what is working and what to
+                  practice next.
                 </p>
                 <Link to="/app/analyze">
                   <Pill className={`mt-7 px-8 ${brandTheme.primaryButton}`} size="lg">
