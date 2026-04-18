@@ -1,11 +1,15 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { AppShell } from "@/components/tuneacademy/AppShell";
 import { Avatar } from "@/components/tuneacademy/Avatar";
 import { Pill } from "@/components/tuneacademy/Pill";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { brandTheme } from "@/lib/theme";
 import { getFirestoreDb, getFirebaseStorage } from "@/lib/firebase";
 import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
+import { LEARNER_BIO_MAX_CHARS, updateLearnerBio } from "@/lib/tuneacademyFirestore";
 import {
   collection,
   getDocs,
@@ -22,7 +26,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+const profileSearchSchema = z.object({
+  editBio: z.enum(["1"]).optional(),
+});
+
 export const Route = createFileRoute("/app/profile")({
+  validateSearch: (raw) => profileSearchSchema.parse(raw ?? {}),
   head: () => ({ meta: [{ title: "Profile — TuneAcademy" }] }),
   component: ProfileTab,
 });
@@ -64,11 +73,30 @@ type RecordingRow = {
 
 function ProfileTab() {
   const nav = useNavigate();
+  const search = Route.useSearch();
   const { user, userDoc, signOutUser } = useAuth();
   const { user: liveDoc } = useFirestoreUserDoc(user?.uid ?? null);
   const profile = liveDoc ?? userDoc;
   const isInstructor = profile?.role === "instructor";
   const initials = initialsFromName(profile?.fullName, profile?.email);
+
+  const [learnerBioEditing, setLearnerBioEditing] = useState(false);
+  const [learnerBioDraft, setLearnerBioDraft] = useState("");
+  const [learnerBioSaving, setLearnerBioSaving] = useState(false);
+
+  useEffect(() => {
+    if (learnerBioEditing) return;
+    setLearnerBioDraft(profile?.bio ?? "");
+  }, [profile?.bio, learnerBioEditing]);
+
+  useEffect(() => {
+    if (search.editBio !== "1" || isInstructor) return;
+    const p = liveDoc ?? userDoc;
+    if (!p) return;
+    setLearnerBioDraft(p.bio ?? "");
+    setLearnerBioEditing(true);
+    void nav({ to: "/app/profile", search: {}, replace: true });
+  }, [search.editBio, liveDoc, userDoc, isInstructor, nav]);
 
   const [report, setReport] = useState<ReportRow | null>(null);
   const [reelCount, setReelCount] = useState(0);
@@ -147,6 +175,29 @@ function ProfileTab() {
     void nav({ to: "/", replace: true });
   }
 
+  async function saveLearnerBio() {
+    if (!user?.uid || isInstructor) return;
+    if (learnerBioDraft.length > LEARNER_BIO_MAX_CHARS) {
+      toast.error(`Bio must be ${LEARNER_BIO_MAX_CHARS} characters or less.`);
+      return;
+    }
+    setLearnerBioSaving(true);
+    try {
+      await updateLearnerBio(user.uid, learnerBioDraft);
+      toast.success("Bio saved");
+      setLearnerBioEditing(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save bio.");
+    } finally {
+      setLearnerBioSaving(false);
+    }
+  }
+
+  function cancelLearnerBioEdit() {
+    setLearnerBioDraft(profile?.bio ?? "");
+    setLearnerBioEditing(false);
+  }
+
   const studentStats = [
     {
       label: "Sessions",
@@ -188,8 +239,16 @@ function ProfileTab() {
           </div>
           <button
             type="button"
-            onClick={() => toast.info("Edit profile coming soon.")}
+            onClick={() => {
+              if (isInstructor) {
+                toast.info("Edit profile coming soon.");
+                return;
+              }
+              setLearnerBioDraft(profile?.bio ?? "");
+              setLearnerBioEditing(true);
+            }}
             className="flex h-10 w-10 items-center justify-center rounded-full border border-[#fffdf5]/15 bg-[#fffdf5]/8 text-[#fffdf5]/70 transition hover:bg-[#fffdf5]/14"
+            aria-label="Edit bio"
           >
             <Edit3 className="h-4 w-4" />
           </button>
@@ -240,6 +299,57 @@ function ProfileTab() {
             <p className="mt-4 border-t border-[#fffdf5]/10 pt-4 text-sm leading-6 text-[#e8f4df]/75">
               {profile.bio}
             </p>
+          )}
+
+          {!isInstructor && (
+            <div className="mt-4 border-t border-[#fffdf5]/10 pt-4">
+              <p className={`text-xs font-black uppercase tracking-[0.18em] ${brandTheme.gold}`}>
+                About you
+              </p>
+              {learnerBioEditing ? (
+                <div className="mt-3 space-y-3">
+                  <Textarea
+                    value={learnerBioDraft}
+                    onChange={(e) => setLearnerBioDraft(e.target.value)}
+                    placeholder="Tell instructors what you’re working on, your style, and what you’d like to learn…"
+                    className="min-h-[100px] border-[#fffdf5]/20 bg-[#fffdf5]/6 text-[#fffdf5] placeholder:text-[#e8f4df]/35"
+                    maxLength={LEARNER_BIO_MAX_CHARS}
+                  />
+                  <div className="flex items-center justify-between gap-2 text-xs text-[#e8f4df]/45">
+                    <span>
+                      {learnerBioDraft.length}/{LEARNER_BIO_MAX_CHARS}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-[#ffd666] text-[#11140c] hover:bg-[#ffd666]/90"
+                      disabled={learnerBioSaving}
+                      onClick={() => void saveLearnerBio()}
+                    >
+                      {learnerBioSaving ? "Saving…" : "Save bio"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-[#fffdf5]/20 text-[#fffdf5] hover:bg-[#fffdf5]/10"
+                      disabled={learnerBioSaving}
+                      onClick={cancelLearnerBioEdit}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : profile?.bio?.trim() ? (
+                <p className="mt-3 text-sm leading-6 text-[#e8f4df]/75">{profile.bio}</p>
+              ) : (
+                <p className="mt-3 text-sm text-[#e8f4df]/50">
+                  No bio yet — tap the pencil above to introduce yourself to instructors.
+                </p>
+              )}
+            </div>
           )}
         </motion.section>
 

@@ -54,7 +54,7 @@ service cloud.firestore {
       allow read: if request.auth != null
         && (('instructorId' in resource.data && resource.data.instructorId == request.auth.uid)
             || ('learnerId' in resource.data && resource.data.learnerId == request.auth.uid));
-      /* Instructor recruits from MusiReels; learner may start a directory DM (see ensureLearnerInstructorThread). */
+      /* Instructor recruits from MusiReels; learner may start a directory or peer DM (see useMessaging). */
       allow create: if request.auth != null
         && 'instructorId' in request.resource.data
         && 'learnerId' in request.resource.data

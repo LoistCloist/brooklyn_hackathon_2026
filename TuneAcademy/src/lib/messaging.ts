@@ -15,3 +15,6 @@ export function otherUserIdFromChatId(chatId: string, myUid: string): string | n
 
 /** Sentinel reel id for learner→instructor threads started from the instructor directory (not MusiReels). */
 export const DIRECT_INSTRUCTOR_DM_REEL_ID = "__instructor_directory__";
+
+/** Sentinel reel id for learner↔learner DMs (invitation rows reuse instructorId/learnerId as sorted uid slots). */
+export const LEARNER_PEER_DM_REEL_ID = "__learner_peer__";

@@ -4,22 +4,19 @@ import {
   ArrowUpRight,
   Film,
   GraduationCap,
+  MessageSquare,
   Radio,
   Search,
   Sparkles,
-  UserPlus,
   Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
-import { RecruitDialog } from "@/components/musireels/RecruitDialog";
+import { InstructorLearnerMessageDialog } from "@/components/tuneacademy/InstructorLearnerMessageDialog";
 import { Pill } from "@/components/tuneacademy/Pill";
 import { useAuth } from "@/contexts/AuthContext";
-import { useInstructorInvitationReelIds } from "@/hooks/useInstructorInvitationReelIds";
 import { useLearnersDirectory, type LearnerDirectoryRow } from "@/hooks/useLearnersDirectory";
 import { firestoreLikeToMillis } from "@/lib/firestoreTime";
 import { brandTheme } from "@/lib/theme";
-import type { Reel } from "@/types";
 import { cn } from "@/lib/utils";
 
 type Segment = "all" | "on_stage" | "backstage";
@@ -55,14 +52,13 @@ function inviteBadge(status: LearnerDirectoryRow["inviteStatus"]): {
 export function StudentsDirectory() {
   const { user, userDoc } = useAuth();
   const { rows, loading, error } = useLearnersDirectory(user?.uid ?? null);
-  const invitedReelIds = useInstructorInvitationReelIds(user?.uid ?? null);
 
   const [q, setQ] = useState("");
   const [segment, setSegment] = useState<Segment>("all");
   const [instrument, setInstrument] = useState<string>("all");
   const [sort, setSort] = useState<SortKey>("name");
-  const [recruitOpen, setRecruitOpen] = useState(false);
-  const [recruitReel, setRecruitReel] = useState<Reel | null>(null);
+  const [messageOpen, setMessageOpen] = useState(false);
+  const [messageTarget, setMessageTarget] = useState<{ id: string; name: string } | null>(null);
 
   const instrumentOptions = useMemo(() => {
     const s = new Set<string>();
@@ -113,7 +109,7 @@ export function StudentsDirectory() {
             </h1>
             <p className="mt-3 max-w-xl text-base leading-relaxed text-[#e8f4df]/72">
               Browse every learner on TuneAcademy, filter by vibe and instrument, open a profile to
-              see their reels, or recruit from here when they have a reel to attach.
+              see their reels, or send a message to start a conversation.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -348,30 +344,21 @@ export function StudentsDirectory() {
                     </Link>
                     <button
                       type="button"
-                      disabled={
-                        !row.spotlightReel ||
-                        !user ||
-                        Boolean(row.spotlightReel && invitedReelIds.has(row.spotlightReel.id))
-                      }
+                      disabled={!user}
                       onClick={() => {
-                        if (!row.spotlightReel) {
-                          toast.error("This learner has no reels yet — nudge them from Musireels.");
-                          return;
-                        }
-                        if (invitedReelIds.has(row.spotlightReel.id)) {
-                          toast.info("You already sent an invite for that reel.");
-                          return;
-                        }
-                        setRecruitReel(row.spotlightReel);
-                        setRecruitOpen(true);
+                        setMessageTarget({
+                          id: row.id,
+                          name: row.doc.fullName?.trim() || "Learner",
+                        });
+                        setMessageOpen(true);
                       }}
                       className={cn(
                         "inline-flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-xs font-black uppercase tracking-[0.12em] transition",
                         "bg-[#ffd666] text-[#11140c] hover:bg-[#ffe08a] disabled:cursor-not-allowed disabled:opacity-35",
                       )}
                     >
-                      <UserPlus className="h-3.5 w-3.5" />
-                      Recruit
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      Message
                     </button>
                   </div>
                 </motion.li>
@@ -403,19 +390,20 @@ export function StudentsDirectory() {
         </div>
       ) : null}
 
-      {recruitReel && user ? (
-        <RecruitDialog
-          open={recruitOpen}
+      {messageTarget && user ? (
+        <InstructorLearnerMessageDialog
+          open={messageOpen}
           onOpenChange={(o) => {
-            setRecruitOpen(o);
-            if (!o) setRecruitReel(null);
+            setMessageOpen(o);
+            if (!o) setMessageTarget(null);
           }}
-          reel={recruitReel}
+          learnerId={messageTarget.id}
+          learnerName={messageTarget.name}
           instructorId={user.uid}
           instructorName={userDoc?.fullName?.trim() || user.displayName || "Instructor"}
           onSent={() => {
-            setRecruitOpen(false);
-            setRecruitReel(null);
+            setMessageOpen(false);
+            setMessageTarget(null);
           }}
         />
       ) : null}

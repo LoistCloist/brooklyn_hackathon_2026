@@ -17,7 +17,12 @@ import {
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { firestoreLikeToMillisOrZero } from "@/lib/firestoreTime";
-import { chatIdForUserPair, DIRECT_INSTRUCTOR_DM_REEL_ID, otherUserIdFromChatId } from "@/lib/messaging";
+import {
+  chatIdForUserPair,
+  DIRECT_INSTRUCTOR_DM_REEL_ID,
+  LEARNER_PEER_DM_REEL_ID,
+  otherUserIdFromChatId,
+} from "@/lib/messaging";
 import type { UserRole } from "@/lib/tuneacademyFirestore";
 import type { ChatMessage, Invitation } from "@/types";
 
@@ -187,7 +192,7 @@ export function useMessagingInvitations(uid: string | undefined) {
 
 export type OtherProfile = { avatarUrl: string; fullName: string };
 
-/** Loads avatar + display name for the counterparty (learners in `users`, instructors in `instructors`). */
+/** Loads avatar + display name for the counterparty (instructors: learners in `users`; learners: `instructors` then `users`). */
 export function useOtherUserProfiles(
   conversations: MessagingConversation[],
   myRole: UserRole | undefined,
@@ -201,7 +206,6 @@ export function useOtherUserProfiles(
     }
     let cancelled = false;
     const db = getFirestoreDb();
-    const collectionName = myRole === "instructor" ? "users" : "instructors";
 
     void (async () => {
       const next: Record<string, OtherProfile> = {};
@@ -209,12 +213,32 @@ export function useOtherUserProfiles(
       await Promise.all(
         ids.map(async (id) => {
           try {
-            const snap = await getDoc(doc(db, collectionName, id));
-            if (!snap.exists()) return;
-            const data = snap.data() as Record<string, unknown>;
-            const fullName = String(data.fullName ?? "").trim();
-            const avatarUrl = String(data.avatarUrl ?? "");
-            next[id] = { fullName, avatarUrl };
+            if (myRole === "instructor") {
+              const snap = await getDoc(doc(db, "users", id));
+              if (!snap.exists()) return;
+              const data = snap.data() as Record<string, unknown>;
+              const fullName = String(data.fullName ?? "").trim();
+              const avatarUrl = String(data.avatarUrl ?? "");
+              next[id] = { fullName, avatarUrl };
+              return;
+            }
+            let fullName = "";
+            let avatarUrl = "";
+            const instSnap = await getDoc(doc(db, "instructors", id));
+            if (instSnap.exists()) {
+              const data = instSnap.data() as Record<string, unknown>;
+              fullName = String(data.fullName ?? "").trim();
+              avatarUrl = String(data.avatarUrl ?? "");
+            }
+            if (!fullName) {
+              const userSnap = await getDoc(doc(db, "users", id));
+              if (userSnap.exists()) {
+                const data = userSnap.data() as Record<string, unknown>;
+                fullName = String(data.fullName ?? "").trim();
+                if (!avatarUrl) avatarUrl = String(data.avatarUrl ?? "");
+              }
+            }
+            if (fullName || avatarUrl) next[id] = { fullName, avatarUrl };
           } catch {
             /* ignore */
           }
@@ -437,4 +461,170 @@ export async function ensureLearnerInstructorThread(params: {
   );
   await batch.commit();
   return chatId;
+}
+
+/**
+ * Instructor starts (or continues) a DM with a learner from the Students roster.
+ * Creates an accepted directory invitation on first contact so the thread appears in Messages.
+ */
+export async function ensureInstructorLearnerThread(params: {
+  instructorId: string;
+  instructorName: string;
+  learnerId: string;
+  learnerName: string;
+  message: string;
+}): Promise<string> {
+  const { instructorId, instructorName, learnerId, learnerName, message } = params;
+  const text = message.trim();
+  if (!text) throw new Error("Message cannot be empty");
+
+  const db = getFirestoreDb();
+  const chatId = chatIdForUserPair(instructorId, learnerId);
+
+  /* Query only invitations this instructor may read; a learner-wide query would include
+   * other instructors' invites and Firestore would reject the entire getDocs. */
+  const qMine = query(collection(db, "invitations"), where("instructorId", "==", instructorId));
+  const snap = await getDocs(qMine);
+  let hasPair = false;
+  for (const d of snap.docs) {
+    const data = d.data() as Record<string, unknown>;
+    if (String(data.learnerId ?? "") === learnerId) {
+      hasPair = true;
+      break;
+    }
+  }
+
+  if (hasPair) {
+    await sendChatMessage(chatId, instructorId, text);
+    return chatId;
+  }
+
+  const batch = writeBatch(db);
+  const invRef = doc(collection(db, "invitations"));
+  batch.set(invRef, {
+    instructorId,
+    instructorName,
+    learnerId,
+    learnerName,
+    reelId: DIRECT_INSTRUCTOR_DM_REEL_ID,
+    message: text,
+    status: "accepted",
+    createdAt: serverTimestamp(),
+  });
+  const msgRef = doc(collection(db, "messages", chatId, "messages"));
+  batch.set(msgRef, {
+    senderId: instructorId,
+    text,
+    createdAt: serverTimestamp(),
+  });
+  batch.set(
+    doc(db, "messages", chatId),
+    { [`unreadCount_${learnerId}`]: increment(1) },
+    { merge: true },
+  );
+  await batch.commit();
+  return chatId;
+}
+
+/**
+ * Learner starts (or continues) a DM with another learner (e.g. from a reel poster profile).
+ * Invitation uses lexicographically ordered uids as `instructorId` / `learnerId` slots only; names are stored so each party sees the correct label in Messages.
+ */
+export async function ensureLearnerPeerThread(params: {
+  senderId: string;
+  senderName: string;
+  peerId: string;
+  peerName: string;
+  message: string;
+}): Promise<string> {
+  const { senderId, senderName, peerId, peerName, message } = params;
+  const text = message.trim();
+  if (!text) throw new Error("Message cannot be empty");
+
+  const ids = [senderId, peerId].sort();
+  const instructorId = ids[0]!;
+  const learnerId = ids[1]!;
+  const instructorName = instructorId === senderId ? senderName.trim() : peerName.trim();
+  const learnerName = learnerId === senderId ? senderName.trim() : peerName.trim();
+
+  const db = getFirestoreDb();
+  const chatId = chatIdForUserPair(senderId, peerId);
+
+  /* Query only on the sender's uid so every matching doc passes invitation read rules.
+   * Querying the other user's instructorId/learnerId can include unrelated rows and fail the whole getDocs. */
+  const qMine =
+    senderId === instructorId
+      ? query(collection(db, "invitations"), where("instructorId", "==", senderId))
+      : query(collection(db, "invitations"), where("learnerId", "==", senderId));
+  const snap = await getDocs(qMine);
+  let hasPair = false;
+  for (const d of snap.docs) {
+    const data = d.data() as Record<string, unknown>;
+    const inst = String(data.instructorId ?? "");
+    const learn = String(data.learnerId ?? "");
+    if (inst === instructorId && learn === learnerId) {
+      hasPair = true;
+      break;
+    }
+  }
+
+  if (hasPair) {
+    await sendChatMessage(chatId, senderId, text);
+    return chatId;
+  }
+
+  const otherUid = peerId;
+  const batch = writeBatch(db);
+  const invRef = doc(collection(db, "invitations"));
+  batch.set(invRef, {
+    instructorId,
+    instructorName,
+    learnerId,
+    learnerName,
+    reelId: LEARNER_PEER_DM_REEL_ID,
+    message: text,
+    status: "accepted",
+    createdAt: serverTimestamp(),
+  });
+  const msgRef = doc(collection(db, "messages", chatId, "messages"));
+  batch.set(msgRef, {
+    senderId,
+    text,
+    createdAt: serverTimestamp(),
+  });
+  batch.set(
+    doc(db, "messages", chatId),
+    { [`unreadCount_${otherUid}`]: increment(1) },
+    { merge: true },
+  );
+  await batch.commit();
+  return chatId;
+}
+
+/** Learner messages a reel poster: instructor thread or peer learner thread. */
+export async function ensureLearnerToPosterThread(params: {
+  learnerId: string;
+  learnerName: string;
+  posterId: string;
+  posterName: string;
+  posterRole: UserRole;
+  message: string;
+}): Promise<string> {
+  const { learnerId, learnerName, posterId, posterName, posterRole, message } = params;
+  if (posterRole === "instructor") {
+    return ensureLearnerInstructorThread({
+      learnerId,
+      learnerName,
+      instructorId: posterId,
+      instructorName: posterName.trim() || "Instructor",
+      message,
+    });
+  }
+  return ensureLearnerPeerThread({
+    senderId: learnerId,
+    senderName: learnerName,
+    peerId: posterId,
+    peerName: posterName.trim() || "Learner",
+    message,
+  });
 }

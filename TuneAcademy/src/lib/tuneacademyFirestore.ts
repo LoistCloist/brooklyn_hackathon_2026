@@ -10,6 +10,8 @@ export type UserFirestoreDoc = {
   fullName: string;
   email: string;
   avatarUrl: string;
+  /** Learner-written bio; stored on `users/{uid}` for students. */
+  bio?: string;
   createdAt?: unknown;
 };
 
@@ -49,6 +51,18 @@ export async function getUserDoc(uid: string): Promise<UserFirestoreDoc | null> 
   const snap = await getDoc(doc(getFirestoreDb(), "users", uid));
   if (!snap.exists()) return null;
   return snap.data() as UserFirestoreDoc;
+}
+
+export const LEARNER_BIO_MAX_CHARS = 500;
+
+export async function updateLearnerBio(uid: string, bio: string): Promise<void> {
+  const trimmed = bio.trim();
+  if (trimmed.length > LEARNER_BIO_MAX_CHARS) {
+    throw new Error(`Bio must be ${LEARNER_BIO_MAX_CHARS} characters or less.`);
+  }
+  await updateDoc(doc(getFirestoreDb(), "users", uid), {
+    bio: trimmed,
+  });
 }
 
 export async function getInstructorDoc(uid: string): Promise<InstructorFirestoreDoc | null> {

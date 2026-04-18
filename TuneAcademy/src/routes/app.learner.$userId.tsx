@@ -13,6 +13,7 @@ import {
   where,
 } from "firebase/firestore";
 import { RecruitDialog } from "@/components/musireels/RecruitDialog";
+import { LearnerPosterMessageDialog } from "@/components/tuneacademy/LearnerPosterMessageDialog";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
@@ -103,6 +104,7 @@ function LearnerProfile() {
   const { user: profile, loading: profileLoading } = useFirestoreUserDoc(userId);
   const viewerRole = liveSelf?.role ?? userDoc?.role;
   const isInstructor = viewerRole === "instructor";
+  const isLearnerViewer = viewerRole === "learner";
   const isOwn = user?.uid === userId;
   const nav = useNavigate();
 
@@ -111,6 +113,7 @@ function LearnerProfile() {
   const [reportLoading, setReportLoading] = useState(true);
   const [recruitOpen, setRecruitOpen] = useState(false);
   const [inviteReel, setInviteReel] = useState<Reel | null>(null);
+  const [messageOpen, setMessageOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -180,6 +183,7 @@ function LearnerProfile() {
   }, [reels]);
 
   const displayName = profile?.fullName?.trim() || search.displayName?.trim() || "Profile";
+  const posterRole = profile?.role ?? "learner";
   const avatarSrc = profile?.avatarUrl?.trim() || search.avatarUrl?.trim() || "";
   const accountCreatedLabel = formatAccountCreatedAt(profile?.createdAt);
   const weaknesses = (report?.weaknesses ?? []).slice(0, 3);
@@ -225,6 +229,16 @@ function LearnerProfile() {
             Instruments: {instruments.map((i) => i.charAt(0).toUpperCase() + i.slice(1)).join(", ")}
           </p>
         ) : null}
+        {profile?.bio?.trim() ? (
+          <div className="mt-5 w-full text-left">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">About</p>
+            <p className="mt-2 text-sm leading-relaxed text-foreground">{profile.bio.trim()}</p>
+          </div>
+        ) : isInstructor ? (
+          <p className="mt-5 w-full text-left text-sm text-muted-foreground">
+            This learner has not added a bio yet.
+          </p>
+        ) : null}
       </div>
 
       {isOwn ? (
@@ -232,7 +246,7 @@ function LearnerProfile() {
           type="button"
           variant="outline"
           className="mt-6 w-full"
-          onClick={() => toast.info("Edit profile is not wired in this build.")}
+          onClick={() => void nav({ to: "/app/profile", search: { editBio: "1" } })}
         >
           Edit profile
         </Button>
@@ -251,6 +265,10 @@ function LearnerProfile() {
           }}
         >
           Recruit
+        </Button>
+      ) : isLearnerViewer && user ? (
+        <Button type="button" variant="outline" className="mt-6 w-full" onClick={() => setMessageOpen(true)}>
+          Send Message
         </Button>
       ) : null}
 
@@ -307,6 +325,18 @@ function LearnerProfile() {
             setRecruitOpen(false);
             setInviteReel(null);
           }}
+        />
+      ) : null}
+
+      {user && isLearnerViewer && !isOwn ? (
+        <LearnerPosterMessageDialog
+          open={messageOpen}
+          onOpenChange={setMessageOpen}
+          learnerId={user.uid}
+          learnerName={userDoc?.fullName?.trim() || user.displayName || "Learner"}
+          posterId={userId}
+          posterName={displayName}
+          posterRole={posterRole}
         />
       ) : null}
     </div>
