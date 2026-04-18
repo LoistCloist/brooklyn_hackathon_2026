@@ -82,7 +82,7 @@ export function InstructorLearnerMessageDialog({
               value={message}
               onChange={(e) => setMessage(e.target.value.slice(0, 500))}
               maxLength={500}
-              className="min-h-[120px]"
+              className="min-h-30"
               disabled={posting}
             />
             <p className="mt-1 text-right text-xs text-muted-foreground">

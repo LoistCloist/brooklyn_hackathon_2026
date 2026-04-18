@@ -76,7 +76,7 @@ function Welcome() {
 
         <main className="grid flex-1 items-center gap-10 py-12 xl:grid-cols-[minmax(0,1.2fr)_minmax(420px,0.8fr)] xl:py-8">
           <motion.section
-            className="max-w-4xl"
+            className="max-w-4xl xl:-mt-25"
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}

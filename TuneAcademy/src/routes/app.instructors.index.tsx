@@ -79,7 +79,7 @@ function InstructorsTab() {
                 params={{ id }}
                 className="group block h-full min-h-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
-                <Card className="flex h-full min-h-[17.5rem] flex-col overflow-hidden p-0 transition-all duration-200 hover:border-foreground/50 hover:shadow-lg active:scale-[0.99] sm:min-h-[19rem]">
+                <Card className="flex h-full min-h-70 flex-col overflow-hidden p-0 transition-all duration-200 hover:border-foreground/50 hover:shadow-lg active:scale-[0.99] sm:min-h-[19rem]">
                   <div className="relative aspect-square w-full shrink-0 bg-gradient-to-b from-muted/40 to-muted/10">
                     <div className="absolute inset-0 flex items-center justify-center p-1.5 sm:p-2">
                       <Avatar
