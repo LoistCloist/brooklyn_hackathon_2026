@@ -18,6 +18,7 @@ import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppMusireelsRouteImport } from './routes/app.musireels'
 import { Route as AppInstructorsRouteImport } from './routes/app.instructors'
 import { Route as AppAnalyzeRouteImport } from './routes/app.analyze'
+import { Route as AppLearnerUserIdRouteImport } from './routes/app.learner.$userId'
 import { Route as AppInstructorsIdRouteImport } from './routes/app.instructors.$id'
 import { Route as AppAnalyzeResultRouteImport } from './routes/app.analyze.result'
 
@@ -66,6 +67,11 @@ const AppAnalyzeRoute = AppAnalyzeRouteImport.update({
   path: '/analyze',
   getParentRoute: () => AppRoute,
 } as any)
+const AppLearnerUserIdRoute = AppLearnerUserIdRouteImport.update({
+  id: '/learner/$userId',
+  path: '/learner/$userId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppInstructorsIdRoute = AppInstructorsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/app/': typeof AppIndexRoute
   '/app/analyze/result': typeof AppAnalyzeResultRoute
   '/app/instructors/$id': typeof AppInstructorsIdRoute
+  '/app/learner/$userId': typeof AppLearnerUserIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/app': typeof AppIndexRoute
   '/app/analyze/result': typeof AppAnalyzeResultRoute
   '/app/instructors/$id': typeof AppInstructorsIdRoute
+  '/app/learner/$userId': typeof AppLearnerUserIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   '/app/': typeof AppIndexRoute
   '/app/analyze/result': typeof AppAnalyzeResultRoute
   '/app/instructors/$id': typeof AppInstructorsIdRoute
+  '/app/learner/$userId': typeof AppLearnerUserIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -130,6 +139,7 @@ export interface FileRouteTypes {
     | '/app/'
     | '/app/analyze/result'
     | '/app/instructors/$id'
+    | '/app/learner/$userId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -142,6 +152,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/app/analyze/result'
     | '/app/instructors/$id'
+    | '/app/learner/$userId'
   id:
     | '__root__'
     | '/'
@@ -155,6 +166,7 @@ export interface FileRouteTypes {
     | '/app/'
     | '/app/analyze/result'
     | '/app/instructors/$id'
+    | '/app/learner/$userId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -230,6 +242,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAnalyzeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/learner/$userId': {
+      id: '/app/learner/$userId'
+      path: '/learner/$userId'
+      fullPath: '/app/learner/$userId'
+      preLoaderRoute: typeof AppLearnerUserIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/instructors/$id': {
       id: '/app/instructors/$id'
       path: '/$id'
@@ -276,6 +295,7 @@ interface AppRouteChildren {
   AppInstructorsRoute: typeof AppInstructorsRouteWithChildren
   AppMusireelsRoute: typeof AppMusireelsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppLearnerUserIdRoute: typeof AppLearnerUserIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -283,6 +303,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppInstructorsRoute: AppInstructorsRouteWithChildren,
   AppMusireelsRoute: AppMusireelsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppLearnerUserIdRoute: AppLearnerUserIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

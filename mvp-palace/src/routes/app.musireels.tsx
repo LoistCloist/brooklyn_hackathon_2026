@@ -1,83 +1,184 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { reels } from "@/lib/mockData";
-import { Heart, MessageCircle, Play } from "lucide-react";
-import { useState } from "react";
-import { InstrumentIcon } from "@/components/musilearn/InstrumentIcon";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { Plus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { z } from "zod";
+import { CreateReelDialog } from "@/components/musireels/CreateReelDialog";
+import { CommentsDrawer } from "@/components/musireels/CommentsDrawer";
+import { RecruitDialog } from "@/components/musireels/RecruitDialog";
+import { ReelVideoCard } from "@/components/musireels/ReelVideoCard";
+import { useAuth } from "@/contexts/AuthContext";
+import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
+import { useInstructorInvitationReelIds } from "@/hooks/useInstructorInvitationReelIds";
+import { useReels } from "@/hooks/useReels";
+import type { Reel } from "@/types";
+
+const musireelsSearchSchema = z.object({
+  reel: z.string().optional(),
+});
 
 export const Route = createFileRoute("/app/musireels")({
+  validateSearch: (raw) => musireelsSearchSchema.parse(raw),
   head: () => ({ meta: [{ title: "Musireels — MusiLearn" }] }),
   component: Musireels,
 });
 
+const SLIDE_PX = "calc(100dvh - 4rem)";
+
 function Musireels() {
-  return (
-    <div className="mx-auto h-screen w-full max-w-md overflow-hidden bg-black">
-      <div className="h-screen w-full snap-y snap-mandatory overflow-y-scroll pb-16">
-        {reels.map((r) => (
-          <ReelCard key={r.id} reel={(r as unknown) as Parameters<typeof ReelCard>[0]["reel"]} />
-        ))}
-      </div>
-    </div>
+  const { user, userDoc } = useAuth();
+  const { user: liveSelf } = useFirestoreUserDoc(user?.uid ?? null);
+  const role = liveSelf?.role ?? userDoc?.role;
+  const isInstructor = role === "instructor";
+  const invitedReelIds = useInstructorInvitationReelIds(user?.uid ?? null);
+
+  const { reels, loading, error } = useReels();
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [commentsReel, setCommentsReel] = useState<Reel | null>(null);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [recruitReel, setRecruitReel] = useState<Reel | null>(null);
+  const [recruitOpen, setRecruitOpen] = useState(false);
+  const [sessionRecruited, setSessionRecruited] = useState<Record<string, boolean>>({});
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const search = useSearch({ from: "/app/musireels" });
+  const nav = useNavigate({ from: "/app/musireels" });
+
+  const uid = user?.uid ?? null;
+
+  const updateActiveFromScroll = useCallback(() => {
+    const root = scrollRef.current;
+    if (!root || reels.length === 0) return;
+    const h = root.clientHeight || 1;
+    const idx = Math.min(reels.length - 1, Math.max(0, Math.round(root.scrollTop / h)));
+    setActiveId(reels[idx]?.id ?? null);
+  }, [reels]);
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    updateActiveFromScroll();
+    root.addEventListener("scroll", updateActiveFromScroll, { passive: true });
+    return () => root.removeEventListener("scroll", updateActiveFromScroll);
+  }, [updateActiveFromScroll]);
+
+  useEffect(() => {
+    if (!loading && reels.length > 0 && !activeId) {
+      setActiveId(reels[0].id);
+    }
+  }, [loading, reels, activeId]);
+
+  useEffect(() => {
+    const target = search.reel;
+    if (!target || loading || reels.length === 0) return;
+    const idx = reels.findIndex((r) => r.id === target);
+    if (idx < 0) return;
+    const root = scrollRef.current;
+    if (!root) return;
+    const h = root.clientHeight;
+    requestAnimationFrame(() => {
+      root.scrollTo({ top: idx * h, behavior: "smooth" });
+      setActiveId(target);
+      void nav({ search: { reel: undefined }, replace: true });
+    });
+  }, [search.reel, loading, reels, nav]);
+
+  const onPosted = useCallback(
+    (reelId: string) => {
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+        setActiveId(reelId);
+      });
+    },
+    [],
   );
-}
-
-function ReelCard({ reel }: { reel: (typeof reels)[number] }) {
-  const [playing, setPlaying] = useState(false);
-  const [liked, setLiked] = useState(false);
 
   return (
-    <div
-      onClick={() => setPlaying((p) => !p)}
-      className="relative flex h-screen w-full snap-start items-center justify-center overflow-hidden bg-black"
-    >
-      {/* Placeholder: monochrome gradient + giant note */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(120% 80% at 50% 30%, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 60%), linear-gradient(180deg, #0a0a0a 0%, #000 100%)",
-        }}
-      />
-      <InstrumentIcon
-        instrument={reel.instrument}
-        className="relative h-32 w-32 text-foreground/20"
-      />
-
-      {!playing && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-foreground/10 backdrop-blur-md">
-            <Play className="h-8 w-8 text-foreground" />
-          </div>
+    <div className="relative mx-auto h-[100dvh] w-full max-w-md overflow-hidden bg-black text-foreground">
+      {loading ? (
+        <div className="flex h-[calc(100dvh-4rem)] items-center justify-center text-sm text-muted-foreground">
+          Loading reels…
+        </div>
+      ) : error ? (
+        <div className="flex h-[calc(100dvh-4rem)] items-center justify-center px-6 text-center text-sm text-destructive">
+          {error}
+        </div>
+      ) : reels.length === 0 ? (
+        <div className="flex h-[calc(100dvh-4rem)] items-center justify-center px-6 text-center text-sm text-muted-foreground">
+          <p className="text-base font-medium text-foreground/90">No reels have been posted yet.</p>
+        </div>
+      ) : (
+        <div
+          ref={scrollRef}
+          className="h-[calc(100dvh-4rem)] snap-y snap-mandatory overflow-y-scroll overscroll-y-contain"
+        >
+          {reels.map((reel) => (
+            <section
+              key={reel.id}
+              className="snap-start snap-always shrink-0"
+              style={{ height: SLIDE_PX }}
+            >
+              <ReelVideoCard
+                reel={reel}
+                isActive={reel.id === activeId}
+                currentUserId={uid}
+                showRecruit={isInstructor}
+                recruitDisabled={Boolean(sessionRecruited[reel.id]) || invitedReelIds.has(reel.id)}
+                onRecruit={() => {
+                  setRecruitReel(reel);
+                  setRecruitOpen(true);
+                }}
+                onOpenComments={() => {
+                  setCommentsReel(reel);
+                  setCommentsOpen(true);
+                }}
+              />
+            </section>
+          ))}
         </div>
       )}
 
-      {/* Bottom-left: meta */}
-      <div className="absolute bottom-24 left-5 right-20 text-foreground">
-        <p className="text-base font-semibold tracking-tight">{reel.username}</p>
-        <span className="mt-2 inline-block rounded-full border border-foreground/40 px-2.5 py-0.5 text-[10px] uppercase tracking-widest">
-          {reel.instrument}
-        </span>
-        <p className="mt-3 max-w-[16rem] text-sm text-foreground/85">{reel.caption}</p>
-      </div>
+      <button
+        type="button"
+        onClick={() => setCreateOpen(true)}
+        className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-50 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-white text-black shadow-lg ring-1 ring-black/10 transition hover:bg-white/90"
+        aria-label="Create reel"
+      >
+        <Plus className="h-7 w-7" strokeWidth={2.2} />
+      </button>
 
-      {/* Bottom-right: actions */}
-      <div className="absolute bottom-24 right-4 flex flex-col items-center gap-5 text-foreground">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setLiked((v) => !v);
+      <CreateReelDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        uploaderName={userDoc?.fullName?.trim() || user?.displayName || "User"}
+        uploaderAvatarUrl={userDoc?.avatarUrl ?? ""}
+        onPosted={onPosted}
+      />
+
+      <CommentsDrawer
+        reel={commentsReel}
+        open={commentsOpen}
+        onOpenChange={(o) => {
+          setCommentsOpen(o);
+          if (!o) setCommentsReel(null);
+        }}
+      />
+
+      {recruitReel && user ? (
+        <RecruitDialog
+          open={recruitOpen}
+          onOpenChange={(o) => {
+            setRecruitOpen(o);
+            if (!o) setRecruitReel(null);
           }}
-          className="flex flex-col items-center gap-1"
-          aria-label="Like"
-        >
-          <Heart className={"h-7 w-7 " + (liked ? "fill-foreground" : "")} />
-          <span className="text-[10px] tabular-nums">{(reel.likes + (liked ? 1 : 0)).toLocaleString()}</span>
-        </button>
-        <button className="flex flex-col items-center gap-1" aria-label="Comments">
-          <MessageCircle className="h-7 w-7" />
-          <span className="text-[10px] tabular-nums">{reel.comments}</span>
-        </button>
-      </div>
+          reel={recruitReel}
+          instructorId={user.uid}
+          instructorName={userDoc?.fullName?.trim() || user.displayName || "Instructor"}
+          onSent={() => {
+            setSessionRecruited((prev) => ({ ...prev, [recruitReel.id]: true }));
+          }}
+        />
+      ) : null}
     </div>
   );
 }

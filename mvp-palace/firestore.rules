@@ -2,15 +2,68 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Signup + profile: each user may only read/write their own user row
-    match /users/{userId} {
-      allow read, create, update, delete: if request.auth != null && request.auth.uid == userId;
+    function inSortedChat(chatId) {
+      let u = request.auth.uid;
+      return chatId.matches('^' + u + '_.+') || chatId.matches('.+_' + u + '$');
     }
 
-    // Instructor public profile: any signed-in user can read; only owner can write
+    function reelLikeOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy', 'likesCount']);
+    }
+
+    function reelCommentCountOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentsCount']);
+    }
+
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
     match /instructors/{userId} {
       allow read: if request.auth != null;
       allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /reports/{reportId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if false;
+    }
+
+    match /reels/{reelId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.uploaderId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.uploaderId == request.auth.uid;
+      allow update: if request.auth != null && (
+        resource.data.uploaderId == request.auth.uid
+        || reelLikeOnly()
+        || reelCommentCountOnly()
+      );
+
+      match /comments/{commentId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+          && request.resource.data.authorId == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
+    match /invitations/{invitationId} {
+      allow read: if request.auth != null
+        && (('instructorId' in resource.data && resource.data.instructorId == request.auth.uid)
+            || ('learnerId' in resource.data && resource.data.learnerId == request.auth.uid));
+      allow create: if request.auth != null
+        && request.resource.data.instructorId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /messages/{chatId}/messages/{messageId} {
+      allow read: if request.auth != null && inSortedChat(chatId);
+      allow create: if request.auth != null
+        && inSortedChat(chatId)
+        && request.resource.data.senderId == request.auth.uid;
+      allow update, delete: if false;
     }
   }
 }
