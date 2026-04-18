@@ -155,6 +155,7 @@ def _analyze_audio(wav_bytes: bytes, instrument: str) -> dict:
 @router.post("/analyze")
 async def analyze(
     instrument: str = Form("guitar"),
+    reference_id: str | None = Form(default=None),
     audio: UploadFile | None = File(default=None),
     authorization: str | None = Header(None),
 ):
@@ -167,6 +168,28 @@ async def analyze(
         raise HTTPException(status_code=400, detail="Audio file is empty")
 
     try:
-        return _analyze_audio(wav_bytes, instrument or "guitar")
+        result = _analyze_audio(wav_bytes, instrument or "guitar")
+
+        if reference_id:
+            import reference_store
+            from transcribe import transcribe_wav
+            from compare import compare
+
+            try:
+                reference_notes = reference_store.get_notes(reference_id)
+                user_notes = transcribe_wav(wav_bytes)
+                comparison = compare(reference_notes, user_notes)
+                result["comparison"] = {
+                    "reference_id": reference_id,
+                    "note_accuracy": comparison.note_accuracy,
+                    "timing_accuracy": comparison.timing_accuracy,
+                    "missed_notes": comparison.missed_notes,
+                    "extra_notes": comparison.extra_notes,
+                    "total_reference_notes": comparison.total_reference_notes,
+                }
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

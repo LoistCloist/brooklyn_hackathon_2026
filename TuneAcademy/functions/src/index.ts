@@ -24,7 +24,7 @@ export const analyzeRecording = onObjectFinalized(
     const snap = await reportRef.get();
     if (!snap.exists) return;
 
-    const { instrument } = snap.data() as { instrument: string; challenge: string };
+    const { instrument, referenceId } = snap.data() as { instrument: string; challenge: string; referenceId?: string };
 
     // Download the WAV
     const [fileBuffer] = await getStorage().bucket(bucket).file(name).download();
@@ -35,6 +35,7 @@ export const analyzeRecording = onObjectFinalized(
     const form = new FormData();
     form.append("instrument", instrument);
     form.append("audio", new Blob([new Uint8Array(fileBuffer)], { type: "audio/wav" }), "recording.wav");
+    if (referenceId) form.append("reference_id", referenceId);
 
     let result: {
       pitch_centre: number;
@@ -43,6 +44,13 @@ export const analyzeRecording = onObjectFinalized(
       tone_quality: number;
       note_attack: number;
       weaknesses: string[];
+      comparison?: {
+        note_accuracy: number;
+        timing_accuracy: number;
+        missed_notes: number;
+        extra_notes: number;
+        total_reference_notes: number;
+      };
     };
 
     try {
@@ -73,6 +81,7 @@ export const analyzeRecording = onObjectFinalized(
         note_attack: result.note_attack,
       },
       weaknesses: result.weaknesses,
+      ...(result.comparison ? { comparison: result.comparison } : {}),
       analyzedAt: new Date(),
     });
 

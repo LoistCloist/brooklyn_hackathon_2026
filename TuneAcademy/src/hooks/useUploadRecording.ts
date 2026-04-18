@@ -14,7 +14,7 @@ export function useUploadRecording(): {
   const [error, setError] = useState<string | null>(null);
 
   const uploadRecording = useCallback(
-    async (args: { wavBlob: Blob; instrument: string; challenge: string; name?: string }): Promise<string> => {
+    async (args: { wavBlob: Blob; instrument: string; challenge: string; name?: string; referenceId?: string }): Promise<string> => {
       setError(null);
       const user = getFirebaseAuth().currentUser;
       if (!user) throw new Error("Must be signed in.");
@@ -29,6 +29,7 @@ export function useUploadRecording(): {
         instrument: args.instrument,
         challenge: args.challenge,
         name: args.name ?? "",
+        referenceId: args.referenceId ?? null,
         status: "pending",
         createdAt: serverTimestamp(),
       });

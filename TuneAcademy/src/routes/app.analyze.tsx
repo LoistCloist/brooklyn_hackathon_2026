@@ -5,11 +5,13 @@ import { Pill } from "@/components/tuneacademy/Pill";
 import { InstrumentIcon } from "@/components/tuneacademy/InstrumentIcon";
 import { challenges } from "@/lib/mockData";
 import { useUploadRecording } from "@/hooks/useUploadRecording";
-import { Mic, Square, Loader2 } from "lucide-react";
+import { Mic, Square, Loader2, ChevronLeft, Music2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
+import { collection, getDocs } from "firebase/firestore";
+import { getFirestoreDb } from "@/lib/firebase";
 
 export const Route = createFileRoute("/app/analyze")({
   head: () => ({ meta: [{ title: "Analyze — TuneAcademy" }] }),
@@ -17,6 +19,17 @@ export const Route = createFileRoute("/app/analyze")({
 });
 
 type ChallengeKey = keyof typeof challenges;
+type Step = "pick-instrument" | "pick-lesson" | "record";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface TrackInfo {
+  track_id: string;
+  progression: string;
+  tempo: number;
+  key: string;
+  style: string;
+}
 
 // ── WAV encoding ──────────────────────────────────────────────────────────────
 
@@ -32,8 +45,8 @@ function encodeWav(samples: Float32Array, sampleRate: number): Blob {
   writeString(view, 8, "WAVE");
   writeString(view, 12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);        // PCM
-  view.setUint16(22, 1, true);        // mono
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, sampleRate * 2, true);
   view.setUint16(32, 2, true);
@@ -49,10 +62,124 @@ function encodeWav(samples: Float32Array, sampleRate: number): Blob {
   return new Blob([buf], { type: "audio/wav" });
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Lesson picker ─────────────────────────────────────────────────────────────
+
+function LessonPicker({
+  onPick,
+  onSkip,
+  onBack,
+}: {
+  onPick: (track: TrackInfo) => void;
+  onSkip: () => void;
+  onBack: () => void;
+}) {
+  const [tracks, setTracks] = useState<TrackInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [styleFilter, setStyleFilter] = useState<"all" | "solo" | "comp">("all");
+
+  useEffect(() => {
+    getDocs(collection(getFirestoreDb(), "guitarset_tracks"))
+      .then((snap) =>
+        setTracks(
+          snap.docs.map((d) => ({ track_id: d.id, ...(d.data() as Omit<TrackInfo, "track_id">) }))
+        )
+      )
+      .catch(() => setTracks([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = tracks.filter(
+    (t) => styleFilter === "all" || t.style === styleFilter,
+  );
+
+  return (
+    <AppShell>
+      <header className="flex items-center gap-3 px-5 pt-8 pb-2">
+        <button onClick={onBack} className="text-muted-foreground">
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Pick a lesson</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Choose a GuitarSet track to play along with.
+          </p>
+        </div>
+      </header>
+
+      {/* Style filter */}
+      <div className="flex gap-2 px-5 pt-3">
+        {(["all", "solo", "comp"] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setStyleFilter(f)}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize transition-colors ${
+              styleFilter === f
+                ? "border-foreground bg-foreground text-background"
+                : "border-hairline text-muted-foreground"
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
+      <div className="px-5 pt-4 pb-6 space-y-3">
+        {loading && (
+          <div className="flex justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        {!loading && filtered.length === 0 && (
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <Music2 className="h-8 w-8 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">
+              No lessons loaded yet.
+              <br />
+              Upload GuitarSet annotations to get started.
+            </p>
+          </div>
+        )}
+
+        {filtered.map((track) => (
+          <button
+            key={track.track_id}
+            onClick={() => onPick(track)}
+            className="w-full text-left"
+          >
+            <Card className="flex items-center justify-between px-4 py-3 transition-colors hover:border-foreground/40">
+              <div>
+                <p className="text-sm font-semibold">
+                  {track.progression} — {track.key}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground capitalize">
+                  {track.style} · {track.tempo} BPM
+                </p>
+              </div>
+              <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+            </Card>
+          </button>
+        ))}
+
+        {!loading && (
+          <button
+            onClick={onSkip}
+            className="mt-2 w-full text-center text-xs text-muted-foreground underline underline-offset-4"
+          >
+            Skip — just record without a lesson
+          </button>
+        )}
+      </div>
+    </AppShell>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 function AnalyzeTab() {
+  const [step, setStep] = useState<Step>("pick-instrument");
   const [picked, setPicked] = useState<ChallengeKey | null>(null);
+  const [selectedTrack, setSelectedTrack] = useState<TrackInfo | null>(null);
   const [recording, setRecording] = useState(false);
   const [wavBlob, setWavBlob] = useState<Blob | null>(null);
   const [wavUrl, setWavUrl] = useState<string | null>(null);
@@ -86,6 +213,25 @@ function AnalyzeTab() {
     };
   }, []);
 
+  function handlePickInstrument(k: ChallengeKey) {
+    setPicked(k);
+    if (challenges[k].instrument === "Guitar") {
+      setStep("pick-lesson");
+    } else {
+      setStep("record");
+    }
+  }
+
+  function handlePickLesson(track: TrackInfo) {
+    setSelectedTrack(track);
+    setStep("record");
+  }
+
+  function handleSkipLesson() {
+    setSelectedTrack(null);
+    setStep("record");
+  }
+
   async function startRecording() {
     setMicError(null);
     if (wavUrlRef.current) { URL.revokeObjectURL(wavUrlRef.current); wavUrlRef.current = null; }
@@ -114,7 +260,6 @@ function AnalyzeTab() {
       const audioBuf = await ctx.decodeAudioData(arrayBuf);
       void ctx.close();
 
-      // Mix down to mono
       const numCh = audioBuf.numberOfChannels;
       const mono = new Float32Array(audioBuf.length);
       for (let ch = 0; ch < numCh; ch++) {
@@ -151,8 +296,11 @@ function AnalyzeTab() {
       const reportId = await uploadRecording({
         wavBlob,
         instrument: c.instrument,
-        challenge: c.text,
+        challenge: selectedTrack
+          ? `${selectedTrack.progression} — ${selectedTrack.key} (${selectedTrack.style}, ${selectedTrack.tempo} BPM)`
+          : c.text,
         name: name.trim() || `${c.instrument} take`,
+        referenceId: selectedTrack?.track_id,
       });
       setUploadedReportId(reportId);
     } catch (err) {
@@ -162,6 +310,8 @@ function AnalyzeTab() {
 
   function reset() {
     setPicked(null);
+    setSelectedTrack(null);
+    setStep("pick-instrument");
     if (wavUrlRef.current) { URL.revokeObjectURL(wavUrlRef.current); wavUrlRef.current = null; }
     setWavBlob(null);
     setWavUrl(null);
@@ -176,21 +326,31 @@ function AnalyzeTab() {
     return <AnalysisPlaceholder onReset={reset} />;
   }
 
+  if (step === "pick-lesson") {
+    return (
+      <LessonPicker
+        onPick={handlePickLesson}
+        onSkip={handleSkipLesson}
+        onBack={() => { setPicked(null); setStep("pick-instrument"); }}
+      />
+    );
+  }
+
   return (
     <AppShell>
       <header className="px-5 pt-8 pb-2">
         <h1 className="text-2xl font-bold tracking-tight">Submit a recording</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {picked ? "Follow the challenge below." : "Choose your instrument."}
+          {step === "pick-instrument" ? "Choose your instrument." : "Follow the challenge below."}
         </p>
       </header>
 
-      {!picked && (
+      {step === "pick-instrument" && (
         <div className="grid grid-cols-2 gap-3 px-5 pt-4">
           {(Object.keys(challenges) as ChallengeKey[]).map((k) => {
             const c = challenges[k];
             return (
-              <button key={k} onClick={() => setPicked(k)} className="text-left">
+              <button key={k} onClick={() => handlePickInstrument(k)} className="text-left">
                 <Card className="flex h-44 flex-col justify-between p-4 transition-colors hover:border-foreground/40">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full border border-hairline">
                     <InstrumentIcon instrument={c.instrument} className="h-5 w-5" />
@@ -206,7 +366,7 @@ function AnalyzeTab() {
         </div>
       )}
 
-      {picked && (
+      {step === "record" && picked && (
         <div className="px-5 pt-4">
           <input
             type="text"
@@ -217,13 +377,33 @@ function AnalyzeTab() {
             className="mb-4 w-full rounded-lg border border-hairline bg-transparent px-4 py-3 text-sm font-semibold placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/30"
           />
           <Card className="p-5">
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Challenge</p>
-            <p className="mt-2 text-lg font-semibold leading-snug">{challenges[picked].text}</p>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              {selectedTrack ? "Lesson" : "Challenge"}
+            </p>
+            {selectedTrack ? (
+              <>
+                <p className="mt-2 text-lg font-semibold leading-snug">
+                  {selectedTrack.progression} — {selectedTrack.key}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground capitalize">
+                  {selectedTrack.style} · {selectedTrack.tempo} BPM
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-lg font-semibold leading-snug">{challenges[picked].text}</p>
+            )}
             <button
-              onClick={reset}
+              onClick={() => {
+                if (challenges[picked].instrument === "Guitar") {
+                  setStep("pick-lesson");
+                } else {
+                  setPicked(null);
+                  setStep("pick-instrument");
+                }
+              }}
               className="mt-3 text-xs text-muted-foreground underline underline-offset-4"
             >
-              Change instrument
+              {selectedTrack ? "Change lesson" : "Change instrument"}
             </button>
           </Card>
 
@@ -269,11 +449,7 @@ function AnalyzeTab() {
                     <p className="text-center text-xs text-muted-foreground">Uploading…</p>
                   </div>
                 ) : (
-                  <Pill
-                    size="lg"
-                    className="w-full"
-                    onClick={() => void submit()}
-                  >
+                  <Pill size="lg" className="w-full" onClick={() => void submit()}>
                     Submit recording
                   </Pill>
                 )}

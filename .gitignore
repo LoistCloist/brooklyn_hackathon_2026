@@ -4,3 +4,20 @@ dist/
 .env
 .env.local
 *.log
+
+# Service account keys
+*-adminsdk-*.json
+*service-account*.json
+*serviceAccount*.json
+
+# GuitarSet data
+guitarset_annotations/
+audio_mono-mic/
+annotation.zip
+audio_mono-mic.zip
+
+# Python venv
+venv/
+.venv/
+__pycache__/
+*.pyc
