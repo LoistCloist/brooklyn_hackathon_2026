@@ -1,4 +1,15 @@
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { getFirebaseStorage, getFirestoreDb } from "@/lib/firebase";
 import type { WeeklyTimeSlot } from "@/lib/scheduling";
@@ -18,6 +29,13 @@ export type UserFirestoreDoc = {
 };
 
 /** PRD: /instructors/{userId} */
+/** Learner-submitted review; path `instructors/{instructorId}/receivedReviews/{reviewId}`. */
+export type InstructorReceivedReviewDoc = {
+  learnerId: string;
+  stars: number;
+  createdAt?: unknown;
+};
+
 export type InstructorFirestoreDoc = {
   fullName: string;
   avatarUrl: string;
@@ -77,6 +95,55 @@ export async function getInstructorDoc(uid: string): Promise<InstructorFirestore
   return snap.data() as InstructorFirestoreDoc;
 }
 
+export function subscribeInstructorDoc(
+  uid: string | null,
+  onDoc: (data: InstructorFirestoreDoc | null) => void,
+): () => void {
+  if (!uid) {
+    onDoc(null);
+    return () => {};
+  }
+  const db = getFirestoreDb();
+  return onSnapshot(
+    doc(db, "instructors", uid),
+    (snap) => {
+      if (!snap.exists()) onDoc(null);
+      else onDoc(snap.data() as InstructorFirestoreDoc);
+    },
+    () => onDoc(null),
+  );
+}
+
+/** Most recent learner star rating for dashboard display. */
+export function subscribeLatestReceivedReviewStars(
+  instructorId: string | null,
+  onStars: (stars: number | null) => void,
+): () => void {
+  if (!instructorId) {
+    onStars(null);
+    return () => {};
+  }
+  const db = getFirestoreDb();
+  const qy = query(
+    collection(db, "instructors", instructorId, "receivedReviews"),
+    orderBy("createdAt", "desc"),
+    limit(1),
+  );
+  return onSnapshot(
+    qy,
+    (snap) => {
+      const row = snap.docs[0]?.data() as InstructorReceivedReviewDoc | undefined;
+      if (!row || typeof row.stars !== "number") {
+        onStars(null);
+        return;
+      }
+      const s = Math.round(row.stars);
+      onStars(Math.min(5, Math.max(1, s)));
+    },
+    () => onStars(null),
+  );
+}
+
 export function instructorOnboardingComplete(inst: InstructorFirestoreDoc | null): boolean {
   return Boolean(inst?.bio?.trim());
 }
@@ -130,6 +197,23 @@ export async function saveInstructorOnboarding(
   await updateDoc(doc(db, "users", uid), {
     fullName: payload.fullName,
     avatarUrl: payload.avatarUrl,
+  });
+}
+
+export async function updateInstructorProfileBasics(
+  uid: string,
+  payload: { hourlyRate: number; nationality: string; experienceYears: number },
+): Promise<void> {
+  const rate = Number.isFinite(payload.hourlyRate)
+    ? Math.max(0, Math.floor(payload.hourlyRate))
+    : 0;
+  const years = Number.isFinite(payload.experienceYears)
+    ? Math.min(80, Math.max(0, Math.floor(payload.experienceYears)))
+    : 0;
+  await updateDoc(doc(getFirestoreDb(), "instructors", uid), {
+    hourlyRate: rate,
+    nationality: payload.nationality.trim(),
+    experienceYears: years,
   });
 }
 
