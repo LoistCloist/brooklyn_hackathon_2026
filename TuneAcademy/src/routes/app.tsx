@@ -14,8 +14,13 @@ function AppLayout() {
   const nav = useNavigate();
   const { user, userDoc, loading, signOutUser } = useAuth();
   const [instructorCheck, setInstructorCheck] = useState<"pending" | "ready">("pending");
+  const bypassAuth = import.meta.env.VITE_BYPASS_AUTH === "true";
 
   useEffect(() => {
+    if (bypassAuth) {
+      setInstructorCheck("ready");
+      return;
+    }
     if (loading) return;
     if (!user) {
       void nav({ to: "/login", replace: true });
@@ -33,9 +38,9 @@ function AppLayout() {
       if (instructorOnboardingComplete(inst)) setInstructorCheck("ready");
       else void nav({ to: "/onboarding", replace: true });
     });
-  }, [loading, user, userDoc, nav]);
+  }, [bypassAuth, loading, user, userDoc, nav]);
 
-  if (loading || !user) {
+  if (!bypassAuth && (loading || !user)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
         Loading…
@@ -43,7 +48,7 @@ function AppLayout() {
     );
   }
 
-  if (!userDoc) {
+  if (!bypassAuth && !userDoc) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-6 text-center">
         <p className="max-w-sm text-sm text-muted-foreground">
@@ -57,7 +62,7 @@ function AppLayout() {
     );
   }
 
-  if (userDoc.role === "instructor" && instructorCheck === "pending") {
+  if (!bypassAuth && userDoc.role === "instructor" && instructorCheck === "pending") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
         Loading…
