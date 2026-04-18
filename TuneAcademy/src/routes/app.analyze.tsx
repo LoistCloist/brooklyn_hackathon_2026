@@ -5,7 +5,7 @@ import { Pill } from "@/components/tuneacademy/Pill";
 import { InstrumentIcon } from "@/components/tuneacademy/InstrumentIcon";
 import { challenges } from "@/lib/mockData";
 import { useUploadRecording } from "@/hooks/useUploadRecording";
-import { Mic, Square } from "lucide-react";
+import { Mic, Square, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -58,6 +58,8 @@ function AnalyzeTab() {
   const [wavUrl, setWavUrl] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [micError, setMicError] = useState<string | null>(null);
+  const [uploadedReportId, setUploadedReportId] = useState<string | null>(null);
+  const [name, setName] = useState("");
 
   const timerRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -66,7 +68,6 @@ function AnalyzeTab() {
   const wavUrlRef = useRef<string | null>(null);
 
   const { uploadRecording, progress, uploading } = useUploadRecording();
-  const nav = useNavigate();
 
   useEffect(() => {
     if (recording) {
@@ -151,8 +152,9 @@ function AnalyzeTab() {
         wavBlob,
         instrument: c.instrument,
         challenge: c.text,
+        name: name.trim() || `${c.instrument} take`,
       });
-      nav({ to: "/app/analyze/result", search: { reportId } });
+      setUploadedReportId(reportId);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed.");
     }
@@ -166,6 +168,12 @@ function AnalyzeTab() {
     setRecording(false);
     setSeconds(0);
     setMicError(null);
+    setUploadedReportId(null);
+    setName("");
+  }
+
+  if (uploadedReportId) {
+    return <AnalysisPlaceholder onReset={reset} />;
   }
 
   return (
@@ -200,6 +208,14 @@ function AnalyzeTab() {
 
       {picked && (
         <div className="px-5 pt-4">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name this recording…"
+            maxLength={60}
+            className="mb-4 w-full rounded-lg border border-hairline bg-transparent px-4 py-3 text-sm font-semibold placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/30"
+          />
           <Card className="p-5">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Challenge</p>
             <p className="mt-2 text-lg font-semibold leading-snug">{challenges[picked].text}</p>
@@ -266,6 +282,39 @@ function AnalyzeTab() {
           </div>
         </div>
       )}
+    </AppShell>
+  );
+}
+
+function AnalysisPlaceholder({ onReset }: { onReset: () => void }) {
+  const navigate = useNavigate();
+  return (
+    <AppShell>
+      <motion.div
+        className="flex min-h-[80vh] flex-col items-center justify-center gap-6 px-8 text-center"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      >
+        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-hairline bg-foreground/5">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+        <div>
+          <p className="text-xl font-bold tracking-tight">Recording submitted!</p>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Your take is being analyzed. Head to your profile to listen back and see your results.
+          </p>
+        </div>
+        <Pill size="lg" className="w-full" onClick={() => void navigate({ to: "/app/profile" })}>
+          Go to my profile
+        </Pill>
+        <button
+          onClick={onReset}
+          className="text-xs text-muted-foreground underline underline-offset-4"
+        >
+          Record another take
+        </button>
+      </motion.div>
     </AppShell>
   );
 }
