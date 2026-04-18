@@ -35,6 +35,8 @@ export type MessagingConversation = {
   otherAvatarUrl: string;
   /** Latest invitation time for this pair (ms) */
   lastInviteActivityMs: number;
+  /** From the backing invitation; learner↔learner DMs use the peer sentinel reel id. */
+  reelId: string;
 };
 
 function tsToMillis(ts: unknown): number {
@@ -97,6 +99,7 @@ function mergeInvitationsToConversations(
       otherDisplayName,
       otherAvatarUrl: "",
       lastInviteActivityMs: lastMs,
+      reelId: inv.reelId,
     });
   }
 

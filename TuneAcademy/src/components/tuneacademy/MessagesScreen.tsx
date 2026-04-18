@@ -14,7 +14,7 @@ import {
   type MessagingConversation,
 } from "@/hooks/useMessaging";
 import { firestoreLikeToMillis } from "@/lib/firestoreTime";
-import { otherUserIdFromChatId } from "@/lib/messaging";
+import { LEARNER_PEER_DM_REEL_ID, otherUserIdFromChatId } from "@/lib/messaging";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/types";
 
@@ -39,6 +39,8 @@ export type MessagesScreenProps = {
   initialChatId?: string;
 };
 
+type LearnerConvFilter = "all" | "students" | "instructors";
+
 export function MessagesScreen({ initialChatId }: MessagesScreenProps) {
   const { user, userDoc } = useAuth();
   const uid = user?.uid;
@@ -51,6 +53,7 @@ export function MessagesScreen({ initialChatId }: MessagesScreenProps) {
   } = useMessagingInvitations(uid);
 
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [learnerFilter, setLearnerFilter] = useState<LearnerConvFilter>("all");
 
   useEffect(() => {
     if (initialChatId) setSelectedChatId(initialChatId);
@@ -70,6 +73,7 @@ export function MessagesScreen({ initialChatId }: MessagesScreenProps) {
       otherDisplayName: "",
       otherAvatarUrl: "",
       lastInviteActivityMs: 0,
+      reelId: "",
     };
   }, [selectedChatId, uid, myRole, conversations]);
 
@@ -92,6 +96,15 @@ export function MessagesScreen({ initialChatId }: MessagesScreenProps) {
       return tb - ta;
     });
   }, [conversationsAugmented, previews]);
+
+  const visibleConversations = useMemo(() => {
+    if (myRole !== "learner") return sortedConversations;
+    if (learnerFilter === "all") return sortedConversations;
+    if (learnerFilter === "students") {
+      return sortedConversations.filter((c) => c.reelId === LEARNER_PEER_DM_REEL_ID);
+    }
+    return sortedConversations.filter((c) => c.reelId !== LEARNER_PEER_DM_REEL_ID);
+  }, [sortedConversations, myRole, learnerFilter]);
 
   const { messages, loading: loadingThread } = useChatThread(selectedChatId);
   const [draft, setDraft] = useState("");
@@ -168,6 +181,37 @@ export function MessagesScreen({ initialChatId }: MessagesScreenProps) {
             Conversations
           </p>
         </div>
+        {myRole === "learner" ? (
+          <div
+            className="flex gap-1 border-b border-[#fffdf5]/10 px-2 py-2"
+            role="tablist"
+            aria-label="Filter conversations"
+          >
+            {(
+              [
+                { id: "all" as const, label: "All" },
+                { id: "students" as const, label: "Students" },
+                { id: "instructors" as const, label: "Instructors" },
+              ] as const
+            ).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={learnerFilter === id}
+                onClick={() => setLearnerFilter(id)}
+                className={cn(
+                  "min-w-0 flex-1 rounded-md px-2 py-2 text-center text-xs font-semibold transition-colors",
+                  learnerFilter === id
+                    ? "bg-[#2fc5b5]/25 text-[#fffdf5] ring-1 ring-[#2fc5b5]/35"
+                    : "text-[#e8f4df]/55 hover:bg-[#fffdf5]/[0.06] hover:text-[#e8f4df]/80",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="min-h-0 flex-1 overflow-y-auto">
           {loadingInvites ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-[#e8f4df]/60">
@@ -185,12 +229,20 @@ export function MessagesScreen({ initialChatId }: MessagesScreenProps) {
               <p className="mt-2 text-xs leading-relaxed text-[#e8f4df]/55">
                 {myRole === "instructor"
                   ? "When you recruit a learner from MusiReels, your thread appears here for both of you."
-                  : "When an instructor reaches out from MusiReels or you message someone from Find instructors, the chat appears here."}
+                  : "When an instructor reaches out, you message someone from Find instructors, or you message another student from Musireels, the chat appears here."}
+              </p>
+            </div>
+          ) : visibleConversations.length === 0 ? (
+            <div className="flex flex-col items-center px-4 py-10 text-center">
+              <p className="text-sm font-medium text-[#fffdf5]">No chats in this view</p>
+              <p className="mt-2 text-xs leading-relaxed text-[#e8f4df]/55">
+                Try another filter, or choose <span className="text-[#e8f4df]/75">All</span> to see every
+                thread.
               </p>
             </div>
           ) : (
             <ul className="divide-y divide-[#fffdf5]/8">
-              {sortedConversations.map((c) => {
+              {visibleConversations.map((c) => {
                 const prev = previews[c.chatId];
                 const snippet = prev?.text ? previewSnippet(prev.text) : "Open to view messages";
                 const active = c.chatId === selectedChatId;
@@ -276,6 +328,11 @@ export function MessagesScreen({ initialChatId }: MessagesScreenProps) {
                   {selected ? labelFor(selected) : ""}
                 </p>
                 <p className="text-xs text-[#e8f4df]/50">Direct message</p>
+                {myRole === "learner" && selected ? (
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-[#e8f4df]/40">
+                    {selected.reelId === LEARNER_PEER_DM_REEL_ID ? "Student" : "Instructor"}
+                  </p>
+                ) : null}
               </div>
             </header>
 

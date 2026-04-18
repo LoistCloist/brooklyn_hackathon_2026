@@ -25,7 +25,7 @@ function MessagesTab() {
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#e8f4df]/70">
           {isInstructor
             ? "Chat with learners you work with. Threads from MusiReels recruitment show up here for you and the learner."
-            : "Chat with instructors who reach out. Recruitment messages and replies appear in the same thread."}
+            : "Chat with instructors and other students. Use All, Students, or Instructors in the list to focus your threads."}
         </p>
       </header>
 
