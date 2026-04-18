@@ -12,7 +12,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
-  head: () => ({ meta: [{ title: "Log in - MusiLearn" }] }),
+  head: () => ({ meta: [{ title: "Log in - TuneAcademy" }] }),
   component: LoginPage,
 });
 
@@ -79,7 +79,7 @@ function LoginPage() {
       <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center gap-10 px-5 py-6 sm:px-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(360px,440px)] lg:px-10">
         <section className="hidden lg:block">
           <Link to="/" className={`text-sm font-black uppercase tracking-[0.24em] ${brandTheme.ink}`}>
-            MusiLearn
+            TuneAcademy
           </Link>
           <motion.div
             className="mt-20 max-w-2xl"

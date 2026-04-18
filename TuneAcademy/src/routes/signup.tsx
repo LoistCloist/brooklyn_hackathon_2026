@@ -16,7 +16,7 @@ export const Route = createFileRoute("/signup")({
   validateSearch: (s: Record<string, unknown>): Search => ({
     role: s.role === "instructor" ? "instructor" : "learner",
   }),
-  head: () => ({ meta: [{ title: "Sign up - MusiLearn" }] }),
+  head: () => ({ meta: [{ title: "Sign up - TuneAcademy" }] }),
   component: SignupPage,
 });
 
@@ -91,7 +91,7 @@ function SignupPage() {
       <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center gap-10 px-5 py-6 sm:px-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(380px,460px)] lg:px-10">
         <section className="hidden lg:block">
           <Link to="/" className={`text-sm font-black uppercase tracking-[0.24em] ${brandTheme.ink}`}>
-            MusiLearn
+            TuneAcademy
           </Link>
           <motion.div
             className="mt-20 max-w-2xl"
@@ -137,7 +137,7 @@ function SignupPage() {
               Create account
             </p>
             <h1 className={`mt-3 text-4xl font-black tracking-normal ${brandTheme.ink}`}>
-              {isInstructor ? "Teach on MusiLearn" : "Start learning"}
+              {isInstructor ? "Teach on TuneAcademy" : "Start learning"}
             </h1>
             <p className={`mt-2 text-sm leading-6 ${brandTheme.inkSoft}`}>
               {isInstructor

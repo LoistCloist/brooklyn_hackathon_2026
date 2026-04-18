@@ -6,13 +6,13 @@ import { motion } from "framer-motion";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "MusiLearn - AI-powered music instruction" },
+      { title: "TuneAcademy - AI-powered music instruction" },
       {
         name: "description",
         content:
-          "MusiLearn turns a recorded performance into a focused weakness profile and instructor match.",
+          "TuneAcademy turns a recorded performance into a focused weakness profile and instructor match.",
       },
-      { property: "og:title", content: "MusiLearn - AI-powered music instruction" },
+      { property: "og:title", content: "TuneAcademy - AI-powered music instruction" },
       {
         property: "og:description",
         content: "Record a take, find the gap, and match with the instructor who can fix it.",
@@ -55,7 +55,7 @@ function Welcome() {
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-6 sm:px-8 lg:px-10">
         <header className="flex items-center justify-between">
           <Link to="/" className={`text-sm font-black uppercase tracking-[0.24em] ${brandTheme.ink}`}>
-            MusiLearn
+            TuneAcademy
           </Link>
           <nav className="flex items-center gap-2">
             <Link
@@ -109,7 +109,7 @@ function Welcome() {
                   variant="secondary"
                   className={`w-full px-7 sm:w-auto ${brandTheme.secondaryButton}`}
                 >
-                  Teach on MusiLearn
+                  Teach on TuneAcademy
                 </Pill>
               </Link>
             </div>
@@ -120,7 +120,7 @@ function Welcome() {
             initial={{ opacity: 0, x: 26 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-            aria-label="MusiLearn sample analysis"
+            aria-label="TuneAcademy sample analysis"
           >
             <div className="absolute left-4 top-8 h-80 w-56 rotate-[-10deg] overflow-hidden rounded-lg border border-[#fffdf5]/20 shadow-[0_30px_80px_rgba(0,0,0,0.35)] sm:left-16">
               <img
