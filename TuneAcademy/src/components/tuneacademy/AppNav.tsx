@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { GraduationCap, Home, MessageSquareText, Mic, PlayCircle, Users } from "lucide-react";
+import { GraduationCap, Home, MessageSquareText, Mic, PlayCircle, UserCircle, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
@@ -9,6 +9,7 @@ const learnerNavTabs = [
   { to: "/app/instructors", label: "Instructors", icon: Users },
   { to: "/app/messages", label: "Messages", icon: MessageSquareText },
   { to: "/app/analyze", label: "Analyze", icon: Mic },
+  { to: "/app/profile", label: "Profile", icon: UserCircle },
 ];
 
 const instructorNavTabs = [
@@ -16,6 +17,7 @@ const instructorNavTabs = [
   { to: "/app/musireels", label: "Musireels", icon: PlayCircle },
   { to: "/app/students", label: "Students", icon: GraduationCap },
   { to: "/app/messages", label: "Messages", icon: MessageSquareText },
+  { to: "/app/profile", label: "Profile", icon: UserCircle },
 ];
 
 export function AppNav() {

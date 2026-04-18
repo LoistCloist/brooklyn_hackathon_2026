@@ -16,6 +16,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppStudentsRouteImport } from './routes/app.students'
+import { Route as AppProfileRouteImport } from './routes/app.profile'
 import { Route as AppMusireelsRouteImport } from './routes/app.musireels'
 import { Route as AppMessagesRouteImport } from './routes/app.messages'
 import { Route as AppInstructorsRouteImport } from './routes/app.instructors'
@@ -58,6 +59,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppStudentsRoute = AppStudentsRouteImport.update({
   id: '/students',
   path: '/students',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProfileRoute = AppProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => AppRoute,
 } as any)
 const AppMusireelsRoute = AppMusireelsRouteImport.update({
@@ -111,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/app/instructors': typeof AppInstructorsRouteWithChildren
   '/app/messages': typeof AppMessagesRoute
   '/app/musireels': typeof AppMusireelsRoute
+  '/app/profile': typeof AppProfileRoute
   '/app/students': typeof AppStudentsRoute
   '/app/': typeof AppIndexRoute
   '/app/analyze/result': typeof AppAnalyzeResultRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByTo {
   '/app/analyze': typeof AppAnalyzeRouteWithChildren
   '/app/messages': typeof AppMessagesRoute
   '/app/musireels': typeof AppMusireelsRoute
+  '/app/profile': typeof AppProfileRoute
   '/app/students': typeof AppStudentsRoute
   '/app': typeof AppIndexRoute
   '/app/analyze/result': typeof AppAnalyzeResultRoute
@@ -144,6 +152,7 @@ export interface FileRoutesById {
   '/app/instructors': typeof AppInstructorsRouteWithChildren
   '/app/messages': typeof AppMessagesRoute
   '/app/musireels': typeof AppMusireelsRoute
+  '/app/profile': typeof AppProfileRoute
   '/app/students': typeof AppStudentsRoute
   '/app/': typeof AppIndexRoute
   '/app/analyze/result': typeof AppAnalyzeResultRoute
@@ -163,6 +172,7 @@ export interface FileRouteTypes {
     | '/app/instructors'
     | '/app/messages'
     | '/app/musireels'
+    | '/app/profile'
     | '/app/students'
     | '/app/'
     | '/app/analyze/result'
@@ -178,6 +188,7 @@ export interface FileRouteTypes {
     | '/app/analyze'
     | '/app/messages'
     | '/app/musireels'
+    | '/app/profile'
     | '/app/students'
     | '/app'
     | '/app/analyze/result'
@@ -195,6 +206,7 @@ export interface FileRouteTypes {
     | '/app/instructors'
     | '/app/messages'
     | '/app/musireels'
+    | '/app/profile'
     | '/app/students'
     | '/app/'
     | '/app/analyze/result'
@@ -260,6 +272,13 @@ declare module '@tanstack/react-router' {
       path: '/students'
       fullPath: '/app/students'
       preLoaderRoute: typeof AppStudentsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/profile': {
+      id: '/app/profile'
+      path: '/profile'
+      fullPath: '/app/profile'
+      preLoaderRoute: typeof AppProfileRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/musireels': {
@@ -352,6 +371,7 @@ interface AppRouteChildren {
   AppInstructorsRoute: typeof AppInstructorsRouteWithChildren
   AppMessagesRoute: typeof AppMessagesRoute
   AppMusireelsRoute: typeof AppMusireelsRoute
+  AppProfileRoute: typeof AppProfileRoute
   AppStudentsRoute: typeof AppStudentsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppLearnerUserIdRoute: typeof AppLearnerUserIdRoute
@@ -362,6 +382,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppInstructorsRoute: AppInstructorsRouteWithChildren,
   AppMessagesRoute: AppMessagesRoute,
   AppMusireelsRoute: AppMusireelsRoute,
+  AppProfileRoute: AppProfileRoute,
   AppStudentsRoute: AppStudentsRoute,
   AppIndexRoute: AppIndexRoute,
   AppLearnerUserIdRoute: AppLearnerUserIdRoute,
