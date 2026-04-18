@@ -56,3 +56,5 @@ VITE_FIREBASE_APP_ID=1:1234567890:web:abcdef
 ```
 
 Do not commit real `.env` files; keep secrets out of git.
+
+repo bot test.
