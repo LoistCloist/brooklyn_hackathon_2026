@@ -743,9 +743,9 @@ function ProfileTab() {
           <button
             type="button"
             onClick={() => void onLogout()}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#fffdf5]/15 bg-[#fffdf5]/8 py-3.5 text-sm font-bold text-[#fffdf5] transition hover:bg-[#fffdf5]/14"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/12 py-3.5 text-sm font-bold text-red-100 transition hover:bg-red-500/20"
           >
-            <LogOut className="h-4 w-4 text-[#e8f4df]/80" />
+            <LogOut className="h-4 w-4 text-red-200" />
             Log out
           </button>
         </motion.div>

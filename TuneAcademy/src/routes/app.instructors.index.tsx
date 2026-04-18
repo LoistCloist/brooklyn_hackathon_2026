@@ -61,7 +61,7 @@ function InstructorsTab() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 px-5 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 px-5 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {loading ? (
           <Card className="col-span-full p-8 text-center text-base text-muted-foreground">
             Loading instructors…

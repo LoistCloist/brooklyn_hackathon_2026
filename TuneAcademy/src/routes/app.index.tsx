@@ -110,10 +110,10 @@ function HomeTab() {
                 align="end"
               >
                 <DropdownMenu.Item
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[#fffdf5] outline-none data-[highlighted]:bg-[#fffdf5]/10 data-[disabled]:opacity-40"
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-red-200 outline-none data-[highlighted]:bg-red-500/15 data-[disabled]:opacity-40"
                   onSelect={() => void onLogout()}
                 >
-                  <LogOut className="h-4 w-4 shrink-0 text-[#e8f4df]/80" />
+                  <LogOut className="h-4 w-4 shrink-0 text-red-300" />
                   Log out
                 </DropdownMenu.Item>
               </DropdownMenu.Content>

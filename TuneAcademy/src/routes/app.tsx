@@ -55,7 +55,12 @@ function AppLayout() {
           Your account exists, but no TuneAcademy profile was found in Firestore. Sign out and sign up
           again, or check your Firebase project and network connection.
         </p>
-        <Pill type="button" variant="secondary" onClick={() => void signOutUser()}>
+        <Pill
+          type="button"
+          variant="secondary"
+          className="border-red-500/50 bg-red-500/12 text-red-100 hover:bg-red-500/20 hover:text-red-50"
+          onClick={() => void signOutUser()}
+        >
           Sign out
         </Pill>
       </div>
