@@ -1,15 +1,15 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { PhoneFrame } from "@/components/musilearn/PhoneFrame";
-import { Card } from "@/components/musilearn/Card";
-import { Pill } from "@/components/musilearn/Pill";
-import { ScoreBar } from "@/components/musilearn/ScoreBar";
+import { AppShell } from "@/components/tuneacademy/AppShell";
+import { Card } from "@/components/tuneacademy/Card";
+import { Pill } from "@/components/tuneacademy/Pill";
+import { ScoreBar } from "@/components/tuneacademy/ScoreBar";
 import { dimensionLabels, recentReport } from "@/lib/mockData";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/app/analyze/result")({
-  head: () => ({ meta: [{ title: "Your analysis — MusiLearn" }] }),
+  head: () => ({ meta: [{ title: "Your analysis — TuneAcademy" }] }),
   component: ResultPage,
 });
 
@@ -35,7 +35,7 @@ function ResultPage() {
   const score = useCount(recentReport.overall_score);
 
   return (
-    <PhoneFrame>
+    <AppShell>
       <header className="flex items-center justify-between px-5 pt-6">
         <button
           onClick={() => nav({ to: "/app/analyze" })}
@@ -89,6 +89,6 @@ function ResultPage() {
           </Pill>
         </Link>
       </div>
-    </PhoneFrame>
+    </AppShell>
   );
 }

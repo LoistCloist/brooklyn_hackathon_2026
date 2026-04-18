@@ -1,9 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Pill } from "@/components/musilearn/Pill";
+import { Pill } from "@/components/tuneacademy/Pill";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatAuthError } from "@/lib/authMessages";
 import { getFirebaseAuth } from "@/lib/firebase";
-import { resolvePostLoginPath } from "@/lib/musilearnFirestore";
+import { resolvePostLoginPath } from "@/lib/tuneacademyFirestore";
 import { brandTheme, musicImages } from "@/lib/theme";
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { useEffect, useState } from "react";

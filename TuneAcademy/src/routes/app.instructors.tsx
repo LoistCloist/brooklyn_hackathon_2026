@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { PhoneFrame } from "@/components/musilearn/PhoneFrame";
-import { Card } from "@/components/musilearn/Card";
-import { Chip } from "@/components/musilearn/Chip";
-import { Avatar } from "@/components/musilearn/Avatar";
-import { Pill } from "@/components/musilearn/Pill";
+import { AppShell } from "@/components/tuneacademy/AppShell";
+import { Card } from "@/components/tuneacademy/Card";
+import { Chip } from "@/components/tuneacademy/Chip";
+import { Avatar } from "@/components/tuneacademy/Avatar";
+import { Pill } from "@/components/tuneacademy/Pill";
 import { instructors, recentReport, dimensionLabels } from "@/lib/mockData";
 import { Star } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -14,7 +14,7 @@ export const Route = createFileRoute("/app/instructors")({
   validateSearch: (s: Record<string, unknown>): Search => ({
     weakness: typeof s.weakness === "string" ? s.weakness : undefined,
   }),
-  head: () => ({ meta: [{ title: "Instructors — MusiLearn" }] }),
+  head: () => ({ meta: [{ title: "Instructors — TuneAcademy" }] }),
   component: InstructorsTab,
 });
 
@@ -40,7 +40,7 @@ function InstructorsTab() {
   });
 
   return (
-    <PhoneFrame>
+    <AppShell>
       <header className="px-5 pt-8 pb-4">
         <h1 className="text-2xl font-bold tracking-tight">Find your instructor</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -112,6 +112,6 @@ function InstructorsTab() {
           </Card>
         )}
       </div>
-    </PhoneFrame>
+    </AppShell>
   );
 }

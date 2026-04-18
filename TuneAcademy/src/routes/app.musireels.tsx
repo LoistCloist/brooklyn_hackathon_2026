@@ -2,10 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { reels } from "@/lib/mockData";
 import { Heart, MessageCircle, Play } from "lucide-react";
 import { useState } from "react";
-import { InstrumentIcon } from "@/components/musilearn/InstrumentIcon";
+import { InstrumentIcon } from "@/components/tuneacademy/InstrumentIcon";
 
 export const Route = createFileRoute("/app/musireels")({
-  head: () => ({ meta: [{ title: "Musireels — MusiLearn" }] }),
+  head: () => ({ meta: [{ title: "Musireels — TuneAcademy" }] }),
   component: Musireels,
 });
 

@@ -1,15 +1,15 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { PhoneFrame } from "@/components/musilearn/PhoneFrame";
-import { Card } from "@/components/musilearn/Card";
-import { Pill } from "@/components/musilearn/Pill";
-import { InstrumentIcon } from "@/components/musilearn/InstrumentIcon";
+import { AppShell } from "@/components/tuneacademy/AppShell";
+import { Card } from "@/components/tuneacademy/Card";
+import { Pill } from "@/components/tuneacademy/Pill";
+import { InstrumentIcon } from "@/components/tuneacademy/InstrumentIcon";
 import { challenges } from "@/lib/mockData";
 import { Mic, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 
 export const Route = createFileRoute("/app/analyze")({
-  head: () => ({ meta: [{ title: "Analyze — MusiLearn" }] }),
+  head: () => ({ meta: [{ title: "Analyze — TuneAcademy" }] }),
   component: AnalyzeTab,
 });
 
@@ -46,7 +46,7 @@ function AnalyzeTab() {
   }
 
   return (
-    <PhoneFrame>
+    <AppShell>
       <header className="px-5 pt-8 pb-2">
         <h1 className="text-2xl font-bold tracking-tight">Submit a recording</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -120,7 +120,7 @@ function AnalyzeTab() {
           </div>
         </div>
       )}
-    </PhoneFrame>
+    </AppShell>
   );
 }
 

@@ -9,7 +9,7 @@ import {
 } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase";
-import { getUserDoc, type UserFirestoreDoc } from "@/lib/musilearnFirestore";
+import { getUserDoc, type UserFirestoreDoc } from "@/lib/tuneacademyFirestore";
 
 type AuthState = {
   user: User | null;

@@ -7,7 +7,7 @@ export function ChatbotFab() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<{ role: "bot" | "user"; text: string }[]>([
-    { role: "bot", text: "Hi! I'm your MusiLearn assistant. How can I help?" },
+    { role: "bot", text: "Hi! I'm your TuneAcademy assistant. How can I help?" },
   ]);
 
   function send() {

@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Pill } from "@/components/musilearn/Pill";
-import { Chip } from "@/components/musilearn/Chip";
+import { Pill } from "@/components/tuneacademy/Pill";
+import { Chip } from "@/components/tuneacademy/Chip";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getInstructorDoc,
@@ -8,14 +8,14 @@ import {
   saveInstructorOnboarding,
   specialtyToSlug,
   uploadInstructorAvatar,
-} from "@/lib/musilearnFirestore";
+} from "@/lib/tuneacademyFirestore";
 import { getFirebaseAuth } from "@/lib/firebase";
 import { Camera } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/onboarding")({
-  head: () => ({ meta: [{ title: "Set up your profile — MusiLearn" }] }),
+  head: () => ({ meta: [{ title: "Set up your profile — TuneAcademy" }] }),
   component: Onboarding,
 });
 

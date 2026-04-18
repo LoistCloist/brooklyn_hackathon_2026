@@ -1,8 +1,8 @@
 import { createFileRoute, Link, useNavigate, notFound } from "@tanstack/react-router";
-import { PhoneFrame } from "@/components/musilearn/PhoneFrame";
-import { Card } from "@/components/musilearn/Card";
-import { Avatar } from "@/components/musilearn/Avatar";
-import { Pill } from "@/components/musilearn/Pill";
+import { AppShell } from "@/components/tuneacademy/AppShell";
+import { Card } from "@/components/tuneacademy/Card";
+import { Avatar } from "@/components/tuneacademy/Avatar";
+import { Pill } from "@/components/tuneacademy/Pill";
 import { instructors, reviewsByInstructor } from "@/lib/mockData";
 import { ArrowLeft, Star, MessageSquare, Calendar } from "lucide-react";
 import { useState } from "react";
@@ -15,15 +15,15 @@ export const Route = createFileRoute("/app/instructors/$id")({
     return i;
   },
   head: ({ loaderData }) => ({
-    meta: [{ title: `${loaderData?.name ?? "Instructor"} — MusiLearn` }],
+    meta: [{ title: `${loaderData?.name ?? "Instructor"} — TuneAcademy` }],
   }),
   component: InstructorProfile,
   notFoundComponent: () => (
-    <PhoneFrame>
+    <AppShell>
       <div className="p-8 text-center text-sm text-muted-foreground">
         Instructor not found. <Link to="/app/instructors" className="underline">Back</Link>
       </div>
-    </PhoneFrame>
+    </AppShell>
   ),
 });
 
@@ -38,7 +38,7 @@ function InstructorProfile() {
   const nav = useNavigate();
 
   return (
-    <PhoneFrame>
+    <AppShell>
       <header className="flex items-center justify-between px-5 pt-6">
         <button
           onClick={() => nav({ to: "/app/instructors" })}
@@ -182,7 +182,7 @@ function InstructorProfile() {
           </Sheet>
         )}
       </AnimatePresence>
-    </PhoneFrame>
+    </AppShell>
   );
 }
 

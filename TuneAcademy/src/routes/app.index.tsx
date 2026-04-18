@@ -1,158 +1,191 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { PhoneFrame } from "@/components/musilearn/PhoneFrame";
-import { Avatar } from "@/components/musilearn/Avatar";
-import { Card } from "@/components/musilearn/Card";
-import { ScoreBar } from "@/components/musilearn/ScoreBar";
-import { Pill } from "@/components/musilearn/Pill";
-import { InstrumentIcon } from "@/components/musilearn/InstrumentIcon";
-import {
-  dashboardStats,
-  dimensionLabels,
-  learnerProfile,
-  progressSeries,
-  recentReport,
-} from "@/lib/mockData";
-import { ArrowRight } from "lucide-react";
+import { AppShell } from "@/components/tuneacademy/AppShell";
+import { Avatar } from "@/components/tuneacademy/Avatar";
+import { Pill } from "@/components/tuneacademy/Pill";
+import { brandTheme } from "@/lib/theme";
+import { ArrowRight, CalendarDays, Flame, Mic, Sparkles, TrendingUp } from "lucide-react";
+import { motion } from "framer-motion";
 
 export const Route = createFileRoute("/app/")({
-  head: () => ({ meta: [{ title: "Home — MusiLearn" }] }),
+  head: () => ({ meta: [{ title: "Home - TuneAcademy" }] }),
   component: HomeTab,
 });
 
-function greeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
-}
+const placeholderStats = [
+  { label: "Practice streak", value: "6", suffix: "days" },
+  { label: "Latest score", value: "82", suffix: "/100" },
+  { label: "Focus", value: "Timing", suffix: "" },
+];
+
+const focusTargets = [
+  { label: "Lock in rests before fast runs", tag: "Rhythm", color: "bg-[#ff6b6b]" },
+  { label: "Keep pitch centered on sustained notes", tag: "Pitch", color: "bg-[#ffd666]" },
+  { label: "Smooth attack on the first beat", tag: "Tone", color: "bg-[#2fc5b5]" },
+];
+
+const progressBars = [
+  { label: "Rhythm", value: 78, color: "bg-[#ff6b6b]" },
+  { label: "Pitch center", value: 84, color: "bg-[#ffd666]" },
+  { label: "Dynamics", value: 69, color: "bg-[#2fc5b5]" },
+];
 
 function HomeTab() {
   return (
-    <PhoneFrame>
-      <header className="flex items-center justify-between px-5 pt-8 pb-5">
-        <div>
-          <p className="text-xs text-muted-foreground">{greeting()},</p>
-          <h1 className="text-2xl font-bold tracking-tight">{learnerProfile.fullName}</h1>
+    <AppShell>
+      <header className="pt-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className={`text-xs font-black uppercase tracking-[0.22em] ${brandTheme.teal}`}>
+              TuneAcademy
+            </p>
+            <h1 className="mt-2 text-5xl font-black tracking-normal text-[#fffdf5]">
+              Today's studio
+            </h1>
+          </div>
+          <Avatar initials="JD" size={46} />
         </div>
-        <Avatar initials={learnerProfile.avatarInitials} size={44} />
       </header>
 
-      {/* Stat cards row */}
-      <div className="no-scrollbar -mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2">
-        <StatCard label="Lessons taken" value={dashboardStats.lessonsTaken} />
-        <StatCard label="Videos posted" value={dashboardStats.videosPosted} />
-        <StatCard label="Upcoming" value={dashboardStats.upcomingSession} small />
-        <StatCard label="Overall score" value={dashboardStats.overallScore} suffix="/100" />
-      </div>
-
-      {/* Progress */}
-      <section className="px-5 pt-6">
-        <div className="mb-3 flex items-end justify-between">
-          <div>
-            <h2 className="text-base font-semibold tracking-tight">Your progress</h2>
-            <p className="text-xs text-muted-foreground">Guitar · last 6 reports</p>
+      <main className="grid gap-5 pt-8 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
+        <div className="space-y-5">
+          <motion.section
+            className="overflow-hidden rounded-lg border border-[#fffdf5]/20 bg-[#fffdf5]/12 shadow-[0_24px_90px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="relative min-h-[360px] p-8 lg:p-10">
+              <div className="absolute right-0 top-0 h-56 w-56 rounded-bl-[160px] bg-[#ffd666]/20" />
+              <div className="absolute bottom-0 right-12 hidden h-44 w-72 rounded-t-lg border border-[#fffdf5]/15 bg-[#0b1510]/45 p-5 lg:block">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a6eee3]">
+                  Today's cue
+                </p>
+                <p className="mt-5 text-5xl font-black text-[#ffd666]">82</p>
+                <p className="mt-2 text-sm font-semibold text-[#e8f4df]/70">
+                  Latest placeholder performance score
+                </p>
+              </div>
+              <div className="relative max-w-2xl">
+              <div className="inline-flex items-center gap-2 rounded-lg bg-[#ffd666] px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-[#11140c]">
+                <Flame className="h-4 w-4" />
+                Warmup ready
+              </div>
+              <h2 className="mt-6 text-6xl font-black leading-[0.9] tracking-normal">
+                Make the next take cleaner.
+              </h2>
+              <p className="mt-5 max-w-xl text-lg leading-8 text-[#e8f4df]/80">
+                Placeholder plan based on your recent recordings. The real feed can plug in here
+                once the backend data is connected.
+              </p>
+              <Link to="/app/analyze">
+                <Pill className={`mt-7 px-8 ${brandTheme.primaryButton}`} size="lg">
+                  Record a take
+                  <Mic className="h-4 w-4" />
+                </Pill>
+              </Link>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground">+14</p>
-        </div>
-        <Card className="p-4">
-          <ProgressChart points={progressSeries} />
-        </Card>
-      </section>
+          </motion.section>
 
-      {/* Recent report */}
-      <section className="px-5 pt-6">
-        <h2 className="mb-3 text-base font-semibold tracking-tight">Recent report</h2>
-        <Card className="p-5">
+          <section className="grid grid-cols-3 gap-4">
+          {placeholderStats.map((stat) => (
+            <div
+              key={stat.label}
+              className="min-h-36 rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-5"
+            >
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#e8f4df]/55">
+                {stat.label}
+              </p>
+              <p className="mt-8 text-5xl font-black leading-none text-[#fffdf5]">{stat.value}</p>
+              {stat.suffix && <p className="mt-2 text-sm font-semibold text-[#ffd666]">{stat.suffix}</p>}
+            </div>
+          ))}
+          </section>
+
+          <section className="rounded-lg border border-[#fffdf5]/20 bg-[#0b1510]/55 p-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-hairline">
-                <InstrumentIcon instrument={recentReport.instrument} className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">{recentReport.instrument}</p>
-                <p className="text-[11px] text-muted-foreground">{recentReport.date}</p>
-              </div>
+            <div>
+              <p className={`text-xs font-black uppercase tracking-[0.18em] ${brandTheme.gold}`}>
+                Practice targets
+              </p>
+              <h2 className="mt-2 text-2xl font-black">Next three fixes</h2>
             </div>
-            <div className="text-right">
-              <p className="text-3xl font-bold tabular-nums">{recentReport.overall_score}</p>
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">/ 100</p>
-            </div>
+            <Sparkles className="h-5 w-5 text-[#ffd666]" />
           </div>
-
-          <div className="mt-5 space-y-3">
-            {dimensionLabels.map((d) => (
-              <ScoreBar key={d.key} label={d.label} value={recentReport.dimension_scores[d.key]} />
+          <div className="mt-5 grid gap-3 lg:grid-cols-3">
+            {focusTargets.map((target) => (
+              <div
+                key={target.label}
+                className="flex min-h-32 items-start gap-3 rounded-lg border border-[#fffdf5]/12 bg-[#fffdf5]/7 p-4"
+              >
+                <span className={`h-16 w-1.5 rounded-lg ${target.color}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-bold leading-6 text-[#fffdf5]">{target.label}</p>
+                  <p className="mt-1 text-xs font-semibold text-[#e8f4df]/55">{target.tag}</p>
+                </div>
+              </div>
             ))}
           </div>
+          </section>
+        </div>
 
-          <div className="mt-5 border-t border-hairline pt-4">
-            <p className="mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">Weaknesses</p>
-            <ul className="space-y-1.5 text-sm">
-              {recentReport.weaknesses.map((w, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-foreground" />
-                  <span>{w}</span>
-                </li>
-              ))}
-            </ul>
+        <aside className="space-y-5">
+          <section className="rounded-lg border border-[#fffdf5]/20 bg-[#fffdf5]/10 p-6 backdrop-blur">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a6eee3]">
+                Progress
+              </p>
+              <h2 className="mt-2 text-2xl font-black">Current skill mix</h2>
+            </div>
+            <TrendingUp className="h-5 w-5 text-[#a6eee3]" />
+          </div>
+          <div className="space-y-6">
+            {progressBars.map((bar) => (
+              <div key={bar.label}>
+                <div className="mb-2 flex justify-between text-sm font-semibold">
+                  <span>{bar.label}</span>
+                  <span className="text-[#e8f4df]/65">{bar.value}%</span>
+                </div>
+                <div className="h-2 rounded-lg bg-[#fffdf5]/14">
+                  <motion.div
+                    className={`h-full rounded-lg ${bar.color}`}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${bar.value}%` }}
+                    transition={{ duration: 0.9, delay: 0.15 }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          </section>
+
+          <section className="grid gap-3">
+          <div className="rounded-lg border border-[#ffd666]/35 bg-[#ffd666] p-5 text-[#11140c]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em]">Upcoming</p>
+                <h2 className="mt-3 text-2xl font-black leading-tight">Maya Chen</h2>
+                <p className="mt-1 text-sm font-semibold opacity-75">Jazz piano, timing repair</p>
+              </div>
+              <CalendarDays className="h-6 w-6" />
+            </div>
+            <p className="mt-5 rounded-lg bg-[#11140c]/10 px-3 py-2 text-sm font-bold">
+              Placeholder session: Apr 22 at 5:00 PM
+            </p>
           </div>
 
-          <Link to="/app/instructors" search={{ weakness: "Pitch Stability" }}>
-            <Pill className="mt-5 w-full" size="md">
-              Find instructors for these weaknesses
-              <ArrowRight className="h-4 w-4" />
-            </Pill>
+          <Link
+            to="/app/instructors"
+            search={{ weakness: "Rhythm" }}
+            className="flex items-center justify-between rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-4 text-sm font-bold text-[#fffdf5] transition hover:bg-[#fffdf5]/14"
+          >
+            Browse instructor matches
+            <ArrowRight className="h-4 w-4" />
           </Link>
-        </Card>
-      </section>
-    </PhoneFrame>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  suffix,
-  small,
-}: {
-  label: string;
-  value: string | number;
-  suffix?: string;
-  small?: boolean;
-}) {
-  return (
-    <Card className="min-w-[8.5rem] shrink-0 snap-start p-4">
-      <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</p>
-      <p className={"mt-3 font-bold leading-none tracking-tight " + (small ? "text-base" : "text-3xl")}>
-        {value}
-        {suffix && <span className="ml-0.5 text-xs text-muted-foreground">{suffix}</span>}
-      </p>
-    </Card>
-  );
-}
-
-function ProgressChart({ points }: { points: number[] }) {
-  const w = 280;
-  const h = 80;
-  const min = Math.min(...points) - 5;
-  const max = Math.max(...points) + 5;
-  const dx = w / (points.length - 1);
-  const y = (v: number) => h - ((v - min) / (max - min)) * h;
-  const d = points.map((p, i) => `${i === 0 ? "M" : "L"} ${i * dx},${y(p)}`).join(" ");
-  const area = `${d} L ${w},${h} L 0,${h} Z`;
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-20 w-full">
-      <defs>
-        <linearGradient id="g" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="white" stopOpacity="0.25" />
-          <stop offset="100%" stopColor="white" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={area} fill="url(#g)" />
-      <path d={d} fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-      {points.map((p, i) => (
-        <circle key={i} cx={i * dx} cy={y(p)} r={2.5} fill="currentColor" />
-      ))}
-    </svg>
+          </section>
+        </aside>
+      </main>
+    </AppShell>
   );
 }

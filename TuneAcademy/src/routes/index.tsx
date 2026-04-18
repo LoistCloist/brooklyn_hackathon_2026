@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Pill } from "@/components/musilearn/Pill";
+import { Pill } from "@/components/tuneacademy/Pill";
 import { brandTheme, musicImages } from "@/lib/theme";
 import { motion } from "framer-motion";
 
