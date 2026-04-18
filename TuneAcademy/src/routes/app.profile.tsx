@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/tuneacademy/AppShell";
 import { Avatar } from "@/components/tuneacademy/Avatar";
 import { Pill } from "@/components/tuneacademy/Pill";
@@ -18,7 +18,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Flame, Music, Star, Clock,
-  Users, BookOpen, MapPin, DollarSign, Edit3, Mic, ChevronDown, ChevronUp,
+  Users, BookOpen, MapPin, DollarSign, Edit3, Mic, ChevronDown, ChevronUp, LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -63,7 +63,8 @@ type RecordingRow = {
 };
 
 function ProfileTab() {
-  const { user, userDoc } = useAuth();
+  const nav = useNavigate();
+  const { user, userDoc, signOutUser } = useAuth();
   const { user: liveDoc } = useFirestoreUserDoc(user?.uid ?? null);
   const profile = liveDoc ?? userDoc;
   const isInstructor = profile?.role === "instructor";
@@ -140,6 +141,11 @@ function ProfileTab() {
       })
       .catch(() => {});
   }, [user?.uid]);
+
+  async function onLogout() {
+    await signOutUser();
+    void nav({ to: "/", replace: true });
+  }
 
   const studentStats = [
     {
@@ -520,6 +526,21 @@ function ProfileTab() {
             </div>
           )}
         </motion.section>
+
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.28, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <button
+            type="button"
+            onClick={() => void onLogout()}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#fffdf5]/15 bg-[#fffdf5]/8 py-3.5 text-sm font-bold text-[#fffdf5] transition hover:bg-[#fffdf5]/14"
+          >
+            <LogOut className="h-4 w-4 text-[#e8f4df]/80" />
+            Log out
+          </button>
+        </motion.div>
 
       </main>
     </AppShell>
