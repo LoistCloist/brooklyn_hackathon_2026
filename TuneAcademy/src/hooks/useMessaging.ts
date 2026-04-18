@@ -4,16 +4,18 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { firestoreLikeToMillisOrZero } from "@/lib/firestoreTime";
-import { chatIdForUserPair } from "@/lib/messaging";
+import { chatIdForUserPair, DIRECT_INSTRUCTOR_DM_REEL_ID } from "@/lib/messaging";
 import type { UserRole } from "@/lib/tuneacademyFirestore";
 import type { ChatMessage, Invitation } from "@/types";
 
@@ -327,4 +329,60 @@ export async function sendChatMessage(
     text: trimmed,
     createdAt: serverTimestamp(),
   });
+}
+
+/**
+ * Learner starts (or continues) a DM with an instructor from the directory.
+ * Creates an invitation row on first contact so the thread appears in Messages; then stores the message.
+ */
+export async function ensureLearnerInstructorThread(params: {
+  learnerId: string;
+  learnerName: string;
+  instructorId: string;
+  instructorName: string;
+  message: string;
+}): Promise<string> {
+  const { learnerId, learnerName, instructorId, instructorName, message } = params;
+  const text = message.trim();
+  if (!text) throw new Error("Message cannot be empty");
+
+  const db = getFirestoreDb();
+  const chatId = chatIdForUserPair(learnerId, instructorId);
+
+  const qLearn = query(collection(db, "invitations"), where("learnerId", "==", learnerId));
+  const snap = await getDocs(qLearn);
+  let hasPair = false;
+  for (const d of snap.docs) {
+    const data = d.data() as Record<string, unknown>;
+    if (
+      String(data.instructorId ?? "") === instructorId &&
+      String(data.learnerId ?? "") === learnerId
+    ) {
+      hasPair = true;
+      break;
+    }
+  }
+
+  const batch = writeBatch(db);
+  if (!hasPair) {
+    const invRef = doc(collection(db, "invitations"));
+    batch.set(invRef, {
+      instructorId,
+      instructorName,
+      learnerId,
+      learnerName,
+      reelId: DIRECT_INSTRUCTOR_DM_REEL_ID,
+      message: text,
+      status: "accepted",
+      createdAt: serverTimestamp(),
+    });
+  }
+  const msgRef = doc(collection(db, "messages", chatId, "messages"));
+  batch.set(msgRef, {
+    senderId: learnerId,
+    text,
+    createdAt: serverTimestamp(),
+  });
+  await batch.commit();
+  return chatId;
 }

@@ -13,6 +13,7 @@ import {
   type MessagingConversation,
 } from "@/hooks/useMessaging";
 import { firestoreLikeToMillis } from "@/lib/firestoreTime";
+import { otherUserIdFromChatId } from "@/lib/messaging";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/types";
 
@@ -32,7 +33,12 @@ function previewSnippet(text: string, max = 72): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
-export function MessagesScreen() {
+export type MessagesScreenProps = {
+  /** Opens this chat after navigation (e.g. learner messaged an instructor from their profile). */
+  initialChatId?: string;
+};
+
+export function MessagesScreen({ initialChatId }: MessagesScreenProps) {
   const { user, userDoc } = useAuth();
   const uid = user?.uid;
   const myRole = userDoc?.role;
@@ -42,19 +48,50 @@ export function MessagesScreen() {
     loading: loadingInvites,
     error: inviteError,
   } = useMessagingInvitations(uid);
-  const chatIds = useMemo(() => conversations.map((c) => c.chatId), [conversations]);
+
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialChatId) setSelectedChatId(initialChatId);
+  }, [initialChatId]);
+
+  const orphanSynthetic = useMemo((): MessagingConversation | null => {
+    if (!selectedChatId || !uid || !myRole) return null;
+    if (conversations.some((c) => c.chatId === selectedChatId)) return null;
+    const other = otherUserIdFromChatId(selectedChatId, uid);
+    if (!other) return null;
+    const isLearner = myRole === "learner";
+    return {
+      chatId: selectedChatId,
+      instructorId: isLearner ? other : uid,
+      learnerId: isLearner ? uid : other,
+      otherUserId: other,
+      otherDisplayName: "",
+      otherAvatarUrl: "",
+      lastInviteActivityMs: 0,
+    };
+  }, [selectedChatId, uid, myRole, conversations]);
+
+  const conversationsAugmented = useMemo(() => {
+    if (!orphanSynthetic) return conversations;
+    return [...conversations, orphanSynthetic];
+  }, [conversations, orphanSynthetic]);
+
+  const chatIds = useMemo(
+    () => conversationsAugmented.map((c) => c.chatId),
+    [conversationsAugmented],
+  );
   const previews = useChatLastMessagePreviews(chatIds);
-  const profiles = useOtherUserProfiles(conversations, myRole);
+  const profiles = useOtherUserProfiles(conversationsAugmented, myRole);
 
   const sortedConversations = useMemo(() => {
-    return [...conversations].sort((a, b) => {
+    return [...conversationsAugmented].sort((a, b) => {
       const ta = Math.max(previews[a.chatId]?.atMs ?? 0, a.lastInviteActivityMs);
       const tb = Math.max(previews[b.chatId]?.atMs ?? 0, b.lastInviteActivityMs);
       return tb - ta;
     });
-  }, [conversations, previews]);
+  }, [conversationsAugmented, previews]);
 
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const { messages, loading: loadingThread } = useChatThread(selectedChatId);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -66,10 +103,10 @@ export function MessagesScreen() {
   );
 
   useEffect(() => {
-    if (selectedChatId && !sortedConversations.some((c) => c.chatId === selectedChatId)) {
-      setSelectedChatId(null);
-    }
-  }, [selectedChatId, sortedConversations]);
+    if (!selectedChatId || !uid) return;
+    if (conversations.some((c) => c.chatId === selectedChatId)) return;
+    if (!otherUserIdFromChatId(selectedChatId, uid)) setSelectedChatId(null);
+  }, [selectedChatId, conversations, uid]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -141,7 +178,7 @@ export function MessagesScreen() {
               <p className="mt-2 text-xs leading-relaxed text-[#e8f4df]/55">
                 {myRole === "instructor"
                   ? "When you recruit a learner from MusiReels, your thread appears here for both of you."
-                  : "When an instructor reaches out from MusiReels, you will see the chat here."}
+                  : "When an instructor reaches out from MusiReels or you message someone from Find instructors, the chat appears here."}
               </p>
             </div>
           ) : (
@@ -231,7 +268,7 @@ export function MessagesScreen() {
                 <p className="truncate font-semibold text-[#fffdf5]">
                   {selected ? labelFor(selected) : ""}
                 </p>
-                <p className="text-xs text-[#e8f4df]/50">Recruitment thread</p>
+                <p className="text-xs text-[#e8f4df]/50">Direct message</p>
               </div>
             </header>
 

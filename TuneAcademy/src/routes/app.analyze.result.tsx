@@ -54,7 +54,9 @@ function ResultPage() {
         transition={{ duration: 0.6 }}
       >
         <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Overall score</p>
-        <p className="mt-2 text-[96px] font-extrabold leading-none tracking-tighter tabular-nums">{score}</p>
+        <p className="mt-2 text-[96px] font-extrabold leading-none tracking-tighter tabular-nums">
+          {score}
+        </p>
         <p className="mt-1 text-xs text-muted-foreground">/ 100 · {recentReport.instrument}</p>
       </motion.div>
 
@@ -62,7 +64,12 @@ function ResultPage() {
         <h2 className="mb-3 text-sm font-semibold tracking-tight">By dimension</h2>
         <Card className="space-y-4 p-5">
           {dimensionLabels.map((d) => (
-            <ScoreBar key={d.key} label={d.label} value={recentReport.dimension_scores[d.key]} animate />
+            <ScoreBar
+              key={d.key}
+              label={d.label}
+              value={recentReport.dimension_scores[d.key]}
+              animate
+            />
           ))}
         </Card>
       </section>
@@ -82,7 +89,7 @@ function ResultPage() {
       </section>
 
       <div className="px-5 pt-6">
-        <Link to="/app/instructors" search={{ weakness: "Pitch Stability" }}>
+        <Link to="/app/instructors">
           <Pill size="lg" className="w-full">
             See suggested instructors
             <ArrowRight className="h-4 w-4" />

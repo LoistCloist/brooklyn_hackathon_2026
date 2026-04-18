@@ -3,7 +3,12 @@ import { AppShell } from "@/components/tuneacademy/AppShell";
 import { MessagesScreen } from "@/components/tuneacademy/MessagesScreen";
 import { useAuth } from "@/contexts/AuthContext";
 
+type Search = { chat?: string };
+
 export const Route = createFileRoute("/app/messages")({
+  validateSearch: (s: Record<string, unknown>): Search => ({
+    chat: typeof s.chat === "string" && s.chat.length > 0 ? s.chat : undefined,
+  }),
   head: () => ({ meta: [{ title: "Messages — TuneAcademy" }] }),
   component: MessagesTab,
 });
@@ -11,6 +16,7 @@ export const Route = createFileRoute("/app/messages")({
 function MessagesTab() {
   const { userDoc } = useAuth();
   const isInstructor = userDoc?.role === "instructor";
+  const { chat } = Route.useSearch();
 
   return (
     <AppShell>
@@ -23,7 +29,7 @@ function MessagesTab() {
         </p>
       </header>
 
-      <MessagesScreen />
+      <MessagesScreen initialChatId={chat} />
     </AppShell>
   );
 }

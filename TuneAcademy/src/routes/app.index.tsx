@@ -230,7 +230,6 @@ function HomeTab() {
             ) : (
               <Link
                 to="/app/instructors"
-                search={{ weakness: "Rhythm" }}
                 className="flex items-center justify-between rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-4 text-sm font-bold text-[#fffdf5] transition hover:bg-[#fffdf5]/14"
               >
                 Browse instructor matches

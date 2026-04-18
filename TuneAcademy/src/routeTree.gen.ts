@@ -20,6 +20,7 @@ import { Route as AppMusireelsRouteImport } from './routes/app.musireels'
 import { Route as AppMessagesRouteImport } from './routes/app.messages'
 import { Route as AppInstructorsRouteImport } from './routes/app.instructors'
 import { Route as AppAnalyzeRouteImport } from './routes/app.analyze'
+import { Route as AppInstructorsIndexRouteImport } from './routes/app.instructors.index'
 import { Route as AppLearnerUserIdRouteImport } from './routes/app.learner.$userId'
 import { Route as AppInstructorsIdRouteImport } from './routes/app.instructors.$id'
 import { Route as AppAnalyzeResultRouteImport } from './routes/app.analyze.result'
@@ -79,6 +80,11 @@ const AppAnalyzeRoute = AppAnalyzeRouteImport.update({
   path: '/analyze',
   getParentRoute: () => AppRoute,
 } as any)
+const AppInstructorsIndexRoute = AppInstructorsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppInstructorsRoute,
+} as any)
 const AppLearnerUserIdRoute = AppLearnerUserIdRouteImport.update({
   id: '/learner/$userId',
   path: '/learner/$userId',
@@ -110,6 +116,7 @@ export interface FileRoutesByFullPath {
   '/app/analyze/result': typeof AppAnalyzeResultRoute
   '/app/instructors/$id': typeof AppInstructorsIdRoute
   '/app/learner/$userId': typeof AppLearnerUserIdRoute
+  '/app/instructors/': typeof AppInstructorsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -117,7 +124,6 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/app/analyze': typeof AppAnalyzeRouteWithChildren
-  '/app/instructors': typeof AppInstructorsRouteWithChildren
   '/app/messages': typeof AppMessagesRoute
   '/app/musireels': typeof AppMusireelsRoute
   '/app/students': typeof AppStudentsRoute
@@ -125,6 +131,7 @@ export interface FileRoutesByTo {
   '/app/analyze/result': typeof AppAnalyzeResultRoute
   '/app/instructors/$id': typeof AppInstructorsIdRoute
   '/app/learner/$userId': typeof AppLearnerUserIdRoute
+  '/app/instructors': typeof AppInstructorsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -142,6 +149,7 @@ export interface FileRoutesById {
   '/app/analyze/result': typeof AppAnalyzeResultRoute
   '/app/instructors/$id': typeof AppInstructorsIdRoute
   '/app/learner/$userId': typeof AppLearnerUserIdRoute
+  '/app/instructors/': typeof AppInstructorsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -160,6 +168,7 @@ export interface FileRouteTypes {
     | '/app/analyze/result'
     | '/app/instructors/$id'
     | '/app/learner/$userId'
+    | '/app/instructors/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -167,7 +176,6 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/app/analyze'
-    | '/app/instructors'
     | '/app/messages'
     | '/app/musireels'
     | '/app/students'
@@ -175,6 +183,7 @@ export interface FileRouteTypes {
     | '/app/analyze/result'
     | '/app/instructors/$id'
     | '/app/learner/$userId'
+    | '/app/instructors'
   id:
     | '__root__'
     | '/'
@@ -191,6 +200,7 @@ export interface FileRouteTypes {
     | '/app/analyze/result'
     | '/app/instructors/$id'
     | '/app/learner/$userId'
+    | '/app/instructors/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -280,6 +290,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAnalyzeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/instructors/': {
+      id: '/app/instructors/'
+      path: '/'
+      fullPath: '/app/instructors/'
+      preLoaderRoute: typeof AppInstructorsIndexRouteImport
+      parentRoute: typeof AppInstructorsRoute
+    }
     '/app/learner/$userId': {
       id: '/app/learner/$userId'
       path: '/learner/$userId'
@@ -318,10 +335,12 @@ const AppAnalyzeRouteWithChildren = AppAnalyzeRoute._addFileChildren(
 
 interface AppInstructorsRouteChildren {
   AppInstructorsIdRoute: typeof AppInstructorsIdRoute
+  AppInstructorsIndexRoute: typeof AppInstructorsIndexRoute
 }
 
 const AppInstructorsRouteChildren: AppInstructorsRouteChildren = {
   AppInstructorsIdRoute: AppInstructorsIdRoute,
+  AppInstructorsIndexRoute: AppInstructorsIndexRoute,
 }
 
 const AppInstructorsRouteWithChildren = AppInstructorsRoute._addFileChildren(
