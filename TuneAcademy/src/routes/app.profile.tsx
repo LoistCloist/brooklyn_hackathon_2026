@@ -4,12 +4,14 @@ import { AppShell } from "@/components/tuneacademy/AppShell";
 import { Avatar } from "@/components/tuneacademy/Avatar";
 import { Pill } from "@/components/tuneacademy/Pill";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { brandTheme } from "@/lib/theme";
 import { getFirestoreDb, getFirebaseStorage } from "@/lib/firebase";
 import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
 import { InstructorWeeklyAvailabilityEditor } from "@/components/tuneacademy/InstructorWeeklyAvailabilityEditor";
+import { ProfileUpcomingMeetings } from "@/components/tuneacademy/ProfileUpcomingMeetings";
 import { dedupeWeeklySlots, type WeeklyTimeSlot } from "@/lib/scheduling";
 import {
   LEARNER_BIO_MAX_CHARS,
@@ -17,6 +19,7 @@ import {
   updateInstructorProfileBasics,
   updateInstructorScheduleSettings,
   updateLearnerBio,
+  updateLearnerBudgetCap,
 } from "@/lib/tuneacademyFirestore";
 import { formatSpecialtyLabel } from "@/hooks/useInstructorsDirectory";
 import {
@@ -34,6 +37,7 @@ import { motion } from "framer-motion";
 import {
   Flame, Music, Star, Clock,
   Users, BookOpen, MapPin, Edit3, Mic, ChevronDown, ChevronUp, LogOut,
+  DollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -139,11 +143,20 @@ function ProfileTab() {
   const [learnerBioEditing, setLearnerBioEditing] = useState(false);
   const [learnerBioDraft, setLearnerBioDraft] = useState("");
   const [learnerBioSaving, setLearnerBioSaving] = useState(false);
+  const [budgetDraft, setBudgetDraft] = useState("");
+  const [budgetSaving, setBudgetSaving] = useState(false);
 
   useEffect(() => {
     if (learnerBioEditing) return;
     setLearnerBioDraft(profile?.bio ?? "");
   }, [profile?.bio, learnerBioEditing]);
+
+  useEffect(() => {
+    if (isInstructor) return;
+    const p = liveDoc ?? userDoc;
+    const c = p?.learningBudgetCapUsd;
+    setBudgetDraft(c != null && Number.isFinite(c) ? String(c) : "");
+  }, [isInstructor, liveDoc, userDoc]);
 
   useEffect(() => {
     if (search.editBio !== "1" || isInstructor) return;
@@ -358,6 +371,25 @@ function ProfileTab() {
       toast.error(e instanceof Error ? e.message : "Could not save profile.");
     } finally {
       setInstructorBasicsSaving(false);
+    }
+  }
+
+  async function saveLearnerBudget() {
+    if (!user?.uid || isInstructor) return;
+    const raw = budgetDraft.trim();
+    const n = raw === "" ? 0 : Number.parseFloat(raw);
+    if (!Number.isFinite(n) || n < 0) {
+      toast.error("Enter a valid budget (0 or more).");
+      return;
+    }
+    setBudgetSaving(true);
+    try {
+      await updateLearnerBudgetCap(user.uid, n);
+      toast.success(n === 0 ? "Budget cleared." : "Budget saved.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save budget.");
+    } finally {
+      setBudgetSaving(false);
     }
   }
 
@@ -640,6 +672,93 @@ function ProfileTab() {
             </div>
           )}
         </motion.section>
+
+        {profile?.role === "learner" || profile?.role === "instructor" ? (
+          <ProfileUpcomingMeetings />
+        ) : null}
+
+        {!isInstructor && (
+          <motion.section
+            className="rounded-xl border border-[#2fc5b5]/40 bg-[#0b1510]/80 p-6"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a6eee3]">
+                  Learning budget
+                </p>
+                <p className="mt-3 flex flex-wrap items-center gap-2 text-[#fffdf5]">
+                  <span className="text-2xl font-black tracking-tight">Budget:</span>
+                  <span className="sr-only">Amount in USD</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="decimal"
+                    value={budgetDraft}
+                    onChange={(e) => setBudgetDraft(e.target.value)}
+                    placeholder="0"
+                    className="h-12 max-w-[11rem] border-[#2fc5b5]/35 bg-[#fffdf5]/10 text-xl font-black text-[#fffdf5] placeholder:text-[#e8f4df]/35"
+                  />
+                  <span className="text-lg font-bold text-[#e8f4df]/70">USD</span>
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-[#e8f4df]/70">
+                  Completed sessions deduct{" "}
+                  <span className="font-semibold text-[#fffdf5]/90">scheduled hours × your tutor’s hourly rate</span>
+                  . Set a cap to track what you’re willing to spend.
+                </p>
+                {(liveDoc ?? userDoc)?.learningBudgetSpentUsd != null &&
+                ((liveDoc ?? userDoc)?.learningBudgetSpentUsd ?? 0) > 0 ? (
+                  <p className="mt-2 text-sm font-semibold text-[#2fc5b5]">
+                    Spent so far:{" "}
+                    {new Intl.NumberFormat(undefined, {
+                      style: "currency",
+                      currency: "USD",
+                      maximumFractionDigits: 0,
+                    }).format((liveDoc ?? userDoc)?.learningBudgetSpentUsd ?? 0)}
+                    {(liveDoc ?? userDoc)?.learningBudgetCapUsd != null ? (
+                      <>
+                        {" "}
+                        · Remaining:{" "}
+                        <span
+                          className={
+                            ((liveDoc ?? userDoc)?.learningBudgetCapUsd ?? 0) -
+                              ((liveDoc ?? userDoc)?.learningBudgetSpentUsd ?? 0) <
+                            0
+                              ? "text-[#ff6b6b]"
+                              : "text-[#ffd666]"
+                          }
+                        >
+                          {new Intl.NumberFormat(undefined, {
+                            style: "currency",
+                            currency: "USD",
+                            maximumFractionDigits: 0,
+                          }).format(
+                            ((liveDoc ?? userDoc)?.learningBudgetCapUsd ?? 0) -
+                              ((liveDoc ?? userDoc)?.learningBudgetSpentUsd ?? 0),
+                          )}
+                        </span>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    className="bg-[#2fc5b5] text-[#11140c] hover:bg-[#2fc5b5]/90"
+                    disabled={budgetSaving}
+                    onClick={() => void saveLearnerBudget()}
+                  >
+                    {budgetSaving ? "Saving…" : "Save budget"}
+                  </Button>
+                </div>
+              </div>
+              <DollarSign className="h-10 w-10 shrink-0 text-[#2fc5b5]/90" aria-hidden />
+            </div>
+          </motion.section>
+        )}
 
         {!isInstructor && (
           <motion.section

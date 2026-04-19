@@ -4,8 +4,10 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   onSnapshot,
   query,
+  runTransaction,
   serverTimestamp,
   Timestamp,
   updateDoc,
@@ -13,6 +15,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
+import { demoMeetUri } from "@/lib/meetLinks";
 import {
   dedupeWeeklySlots,
   flattenEngagementHolds,
@@ -48,8 +51,21 @@ export type TutoringEngagementDoc = {
   createdAt?: unknown;
 };
 
+/** `tutoringEngagements/{id}/meetSessions/{sessionIndex}` — join tracking + billing for one slot. */
+export type TutoringMeetSessionDoc = {
+  meetLink: string;
+  sessionIndex: number;
+  learnerOpenedAt: Timestamp | null;
+  instructorOpenedAt: Timestamp | null;
+  sessionCompletedAt: Timestamp | null;
+  budgetCharged: boolean;
+  /** Set when either party cancels; both profiles read the same doc. */
+  cancelledAt?: Timestamp | null;
+};
+
 const REQUESTS = "tutoringRequests";
-const ENGAGEMENTS = "tutoringEngagements";
+export const ENGAGEMENTS = "tutoringEngagements";
+export const MEET_SESSIONS = "meetSessions";
 
 export const TUTORING_MESSAGE_MAX = 2000;
 
@@ -252,39 +268,240 @@ export async function acceptTutoringRequest(
   } satisfies Omit<TutoringEngagementDoc, "meetings"> & {
     meetings: { startAt: Timestamp; endAt: Timestamp }[];
   });
+
+  const eid = engRef.id;
+  for (let i = 0; i < meetings.length; i++) {
+    batch.set(doc(db, ENGAGEMENTS, eid, MEET_SESSIONS, String(i)), {
+      meetLink: demoMeetUri(eid, i),
+      sessionIndex: i,
+      learnerOpenedAt: null,
+      instructorOpenedAt: null,
+      sessionCompletedAt: null,
+      budgetCharged: false,
+      cancelledAt: null,
+    });
+  }
+
   await batch.commit();
-  return engRef.id;
+  return eid;
 }
 
 export type NextMeetingInfo = {
   engagementId: string;
+  /** Index into `meetings` / `meetSessions/{sessionIndex}`. */
+  sessionIndex: number;
   startAt: Date;
   endAt: Date;
 };
 
-export function getNextUpcomingMeeting(
-  engagementRows: { id: string; data: TutoringEngagementDoc }[],
+/** Calendar slots whose scheduled end is still in the future (same ordering as profile “upcoming”). */
+export type FutureCalendarSlot = {
+  key: string;
+  engagementId: string;
+  sessionIndex: number;
+  startAt: Date;
+  endAt: Date;
+  learnerId: string;
+  instructorId: string;
+};
+
+/**
+ * Scheduled meetings that have not ended yet by wall-clock time.
+ * Does not read `meetSessions` — use `useNextJoinableHomeMeeting` on the client to skip
+ * cancelled or completed sessions.
+ */
+export function listFutureCalendarSlots(
+  rows: { id: string; data: TutoringEngagementDoc }[],
   now = Date.now(),
-): NextMeetingInfo | null {
-  let best: NextMeetingInfo | null = null;
-  let bestStart = Infinity;
-  for (const { id, data } of engagementRows) {
-    for (const m of data.meetings) {
+): FutureCalendarSlot[] {
+  const out: FutureCalendarSlot[] = [];
+  for (const { id, data } of rows) {
+    for (let sessionIndex = 0; sessionIndex < data.meetings.length; sessionIndex++) {
+      const m = data.meetings[sessionIndex]!;
       const s = timestampToMillis(m.startAt);
       const e = timestampToMillis(m.endAt);
       if (s == null || e == null) continue;
       if (e <= now) continue;
-      if (s < bestStart) {
-        bestStart = s;
-        best = {
-          engagementId: id,
-          startAt: new Date(s),
-          endAt: new Date(e),
-        };
-      }
+      out.push({
+        key: `${id}_${sessionIndex}`,
+        engagementId: id,
+        sessionIndex,
+        startAt: new Date(s),
+        endAt: new Date(e),
+        learnerId: data.learnerId,
+        instructorId: data.instructorId,
+      });
     }
   }
-  return best;
+  out.sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+  return out;
+}
+
+/** Earliest calendar-future slot only; ignores cancelled/completed session state. Prefer `useNextJoinableHomeMeeting` for UI. */
+export function getNextUpcomingMeeting(
+  engagementRows: { id: string; data: TutoringEngagementDoc }[],
+  now = Date.now(),
+): NextMeetingInfo | null {
+  const slots = listFutureCalendarSlots(engagementRows, now);
+  const first = slots[0];
+  if (!first) return null;
+  return {
+    engagementId: first.engagementId,
+    sessionIndex: first.sessionIndex,
+    startAt: first.startAt,
+    endAt: first.endAt,
+  };
+}
+
+export function subscribeMeetSession(
+  engagementId: string | null,
+  sessionIndex: number | null,
+  onData: (data: TutoringMeetSessionDoc | null) => void,
+): () => void {
+  if (!engagementId || sessionIndex == null || sessionIndex < 0) {
+    onData(null);
+    return () => {};
+  }
+  const db = getFirestoreDb();
+  const ref = doc(db, ENGAGEMENTS, engagementId, MEET_SESSIONS, String(sessionIndex));
+  return onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) onData(null);
+      else onData(snap.data() as TutoringMeetSessionDoc);
+    },
+    () => onData(null),
+  );
+}
+
+export type RecordMeetOpenResult = "recorded" | "completed" | "noop";
+
+/**
+ * Call when the learner or instructor opens the Meet link. When both have opened,
+ * marks the session complete and charges the learner's budget from their profile.
+ */
+export async function recordMeetLinkOpened(args: {
+  uid: string;
+  engagementId: string;
+  sessionIndex: number;
+  role: "learner" | "instructor";
+}): Promise<RecordMeetOpenResult> {
+  const { uid, engagementId, sessionIndex, role } = args;
+  const db = getFirestoreDb();
+  const engRef = doc(db, ENGAGEMENTS, engagementId);
+  const sessRef = doc(db, ENGAGEMENTS, engagementId, MEET_SESSIONS, String(sessionIndex));
+
+  return runTransaction(db, async (tx) => {
+    const engSnap = await tx.get(engRef);
+    if (!engSnap.exists()) throw new Error("Engagement not found.");
+    const eng = engSnap.data() as TutoringEngagementDoc;
+    if (eng.learnerId !== uid && eng.instructorId !== uid) throw new Error("Not part of this session.");
+
+    const sessSnap = await tx.get(sessRef);
+    const instRef = doc(db, "instructors", eng.instructorId);
+    const instSnap = await tx.get(instRef);
+    const userRef = doc(db, "users", eng.learnerId);
+
+    const sess = sessSnap.exists() ? (sessSnap.data() as TutoringMeetSessionDoc) : null;
+    if (sess?.sessionCompletedAt) return "noop";
+    if (sess?.cancelledAt) throw new Error("This meeting was cancelled.");
+
+    const openKey = role === "learner" ? "learnerOpenedAt" : "instructorOpenedAt";
+    const alreadyMine = sess?.[openKey] != null;
+
+    const learnerNext = (sess?.learnerOpenedAt != null) || role === "learner";
+    const instructorNext = (sess?.instructorOpenedAt != null) || role === "instructor";
+
+    if (!sessSnap.exists()) {
+      tx.set(sessRef, {
+        meetLink: demoMeetUri(engagementId, sessionIndex),
+        sessionIndex,
+        learnerOpenedAt: role === "learner" ? serverTimestamp() : null,
+        instructorOpenedAt: role === "instructor" ? serverTimestamp() : null,
+        sessionCompletedAt: null,
+        budgetCharged: false,
+        cancelledAt: null,
+      });
+    } else if (!alreadyMine) {
+      tx.update(sessRef, { [openKey]: serverTimestamp() });
+    }
+
+    if (!learnerNext || !instructorNext) {
+      return alreadyMine ? "noop" : "recorded";
+    }
+
+    const meeting = eng.meetings[sessionIndex];
+    if (!meeting) throw new Error("Invalid session index.");
+
+    const startMs = timestampToMillis(meeting.startAt);
+    const endMs = timestampToMillis(meeting.endAt);
+    if (startMs == null || endMs == null) throw new Error("Bad meeting times.");
+
+    const hours = Math.max(0, (endMs - startMs) / 3_600_000);
+    const hourly = (instSnap.data() as { hourlyRate?: number } | undefined)?.hourlyRate ?? 0;
+    const chargeUsd = Math.round(hours * hourly * 100) / 100;
+
+    tx.update(sessRef, {
+      sessionCompletedAt: serverTimestamp(),
+      budgetCharged: true,
+    });
+
+    if (chargeUsd > 0) {
+      tx.update(userRef, {
+        learningBudgetSpentUsd: increment(chargeUsd),
+      });
+    }
+
+    return "completed";
+  });
+}
+
+export async function cancelMeetingSession(args: {
+  uid: string;
+  engagementId: string;
+  sessionIndex: number;
+}): Promise<void> {
+  const { uid, engagementId, sessionIndex } = args;
+  const db = getFirestoreDb();
+  const engRef = doc(db, ENGAGEMENTS, engagementId);
+  const sessRef = doc(db, ENGAGEMENTS, engagementId, MEET_SESSIONS, String(sessionIndex));
+
+  await runTransaction(db, async (tx) => {
+    const engSnap = await tx.get(engRef);
+    if (!engSnap.exists()) throw new Error("Engagement not found.");
+    const eng = engSnap.data() as TutoringEngagementDoc;
+    if (eng.learnerId !== uid && eng.instructorId !== uid) {
+      throw new Error("You are not part of this session.");
+    }
+
+    const meeting = eng.meetings[sessionIndex];
+    if (!meeting) throw new Error("Invalid session.");
+
+    const endMs = timestampToMillis(meeting.endAt);
+    if (endMs == null) throw new Error("Invalid meeting time.");
+    if (endMs <= Date.now()) throw new Error("This meeting has already ended.");
+
+    const sessSnap = await tx.get(sessRef);
+    if (sessSnap.exists()) {
+      const sess = sessSnap.data() as TutoringMeetSessionDoc;
+      if (sess.sessionCompletedAt) throw new Error("Cannot cancel a completed session.");
+      if (sess.cancelledAt) throw new Error("This meeting is already cancelled.");
+    }
+
+    if (!sessSnap.exists()) {
+      tx.set(sessRef, {
+        meetLink: demoMeetUri(engagementId, sessionIndex),
+        sessionIndex,
+        learnerOpenedAt: null,
+        instructorOpenedAt: null,
+        sessionCompletedAt: null,
+        budgetCharged: false,
+        cancelledAt: serverTimestamp(),
+      });
+    } else {
+      tx.update(sessRef, { cancelledAt: serverTimestamp() });
+    }
+  });
 }
 
 export function subscribeEngagementsForUser(

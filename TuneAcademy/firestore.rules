@@ -15,23 +15,99 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentsCount']);
     }
 
+    /** Firestore sends whole numbers as `int` in rules; `is number` alone can reject valid writes. */
+    function isNumeric(v) {
+      return v is int || v is float;
+    }
+
+    /**
+     * Session reviews: block only verified instructors. Missing `role`, null, or `learner` all pass.
+     * (Using `== 'learner'` alone fails when `role` is null or the field is absent in older docs.)
+     */
+    function authUserMaySubmitSessionReview() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'learner')
+            != 'instructor';
+    }
+
     match /users/{userId} {
       allow read: if request.auth != null;
-      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+      /**
+       * Own profile: full control.
+       * Tutoring: when a session completes, the instructor’s client may run the same transaction
+       * as the learner’s to increment `learningBudgetSpentUsd` on the student’s user doc (see
+       * `recordMeetLinkOpened`). Only that field, only upward, and only if the caller has an
+       * `instructors/{uid}` profile (verified instructor account).
+       */
+      allow update: if request.auth != null && request.auth.uid == userId
+        || (
+          request.auth != null
+          && exists(/databases/$(database)/documents/instructors/$(request.auth.uid))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['learningBudgetSpentUsd'])
+          && request.resource.data.learningBudgetSpentUsd is number
+          && (!('learningBudgetSpentUsd' in resource.data)
+              || request.resource.data.learningBudgetSpentUsd >= resource.data.learningBudgetSpentUsd)
+        );
     }
 
     match /instructors/{instructorId} {
+      /** Prior aggregate count for learner review txn; non-numeric stored values must not crash rules. */
+      function instructorPriorReviewCount() {
+        return resource.data.keys().hasAll(['reviewCount']) && isNumeric(resource.data.reviewCount)
+          ? int(floor(resource.data.reviewCount))
+          : 0;
+      }
+
       allow read: if request.auth != null;
-      allow create, update, delete: if request.auth != null && request.auth.uid == instructorId;
+      allow create, delete: if request.auth != null && request.auth.uid == instructorId;
+      /**
+       * Instructor: full document updates.
+       * Learner: `submitInstructorSessionReview` updates only `rating` and `reviewCount` in the same
+       * transaction as creating `receivedReviews/{reviewId}` (see tuneacademyFirestore).
+       */
+      allow update: if request.auth != null && request.auth.uid == instructorId
+        || (
+          request.auth != null
+          && request.auth.uid != instructorId
+          && authUserMaySubmitSessionReview()
+          /**
+           * Client `updateDoc` only sends `rating` + `reviewCount`, but `diff().hasOnly` can still
+           * fail across SDK / float normalization; keep numeric guards instead.
+           */
+          && isNumeric(request.resource.data.reviewCount)
+          && request.resource.data.reviewCount == floor(request.resource.data.reviewCount)
+          && isNumeric(request.resource.data.rating)
+          && request.resource.data.reviewCount == instructorPriorReviewCount() + 1
+        );
 
       match /receivedReviews/{reviewId} {
         allow read: if request.auth != null;
-        allow create: if request.auth != null
-          && request.resource.data.learnerId == request.auth.uid
-          && request.resource.data.stars is int
-          && request.resource.data.stars >= 1
-          && request.resource.data.stars <= 5;
-        allow update, delete: if false;
+        /**
+         * JS `set()` inside `runTransaction` often arrives as Commit `update` + `currentDocument.exists:false`,
+         * not as a rules `create`. Allow that path only when the review doc does not exist yet.
+         */
+        function validNewSessionReview() {
+          return request.auth != null
+            && request.resource.data.learnerId == request.auth.uid
+            && isNumeric(request.resource.data.stars)
+            && request.resource.data.stars >= 1
+            && request.resource.data.stars <= 5
+            && request.resource.data.stars == floor(request.resource.data.stars)
+            && request.resource.data.engagementId is string
+            && isNumeric(request.resource.data.sessionIndex)
+            && request.resource.data.sessionIndex >= 0
+            && request.resource.data.sessionIndex == floor(request.resource.data.sessionIndex)
+            && reviewId == request.auth.uid + '_' + request.resource.data.engagementId + '_' + string(int(request.resource.data.sessionIndex))
+            && (!('reviewText' in request.resource.data)
+                || (request.resource.data.reviewText is string
+                    && request.resource.data.reviewText.size() <= 2000));
+        }
+        allow create: if validNewSessionReview();
+        allow update: if !exists(/databases/$(database)/documents/instructors/$(instructorId)/receivedReviews/$(reviewId))
+          && validNewSessionReview();
+        allow delete: if false;
       }
     }
 
@@ -128,6 +204,27 @@ service cloud.firestore {
         && request.resource.data.weeklySlots is list
         && request.resource.data.meetings is list;
       allow update, delete: if false;
+
+      match /meetSessions/{sessionId} {
+        function engagement() {
+          return get(/databases/$(database)/documents/tutoringEngagements/$(engagementId));
+        }
+        allow read: if request.auth != null
+          && (engagement().data.learnerId == request.auth.uid
+              || engagement().data.instructorId == request.auth.uid);
+        allow create: if request.auth != null
+          && exists(/databases/$(database)/documents/tutoringEngagements/$(engagementId))
+          && (engagement().data.learnerId == request.auth.uid
+              || engagement().data.instructorId == request.auth.uid)
+          && request.resource.data.meetLink is string
+          && request.resource.data.sessionIndex is int;
+        allow update: if request.auth != null
+          && (engagement().data.learnerId == request.auth.uid
+              || engagement().data.instructorId == request.auth.uid)
+          && request.resource.data.meetLink == resource.data.meetLink
+          && request.resource.data.sessionIndex == resource.data.sessionIndex;
+        allow delete: if false;
+      }
     }
   }
 }

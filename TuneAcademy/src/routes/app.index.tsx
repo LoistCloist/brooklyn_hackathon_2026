@@ -13,11 +13,12 @@ import {
 import { timestampToMillis } from "@/lib/scheduling";
 import { brandTheme } from "@/lib/theme";
 import {
-  getNextUpcomingMeeting,
   subscribeEngagementsForUser,
   subscribePendingRequestCount,
   type TutoringEngagementDoc,
 } from "@/lib/tutoringFirestore";
+import { useNextJoinableHomeMeeting } from "@/hooks/useNextJoinableHomeMeeting";
+import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
 import {
   ArrowRight,
   Bell,
@@ -97,6 +98,9 @@ function HomeTab() {
   const [instructorDocSnap, setInstructorDocSnap] = useState<InstructorFirestoreDoc | null>(null);
   const [latestReviewStars, setLatestReviewStars] = useState<number | null>(null);
   const [leaderboardNames, setLeaderboardNames] = useState<Record<string, string>>({});
+  const { user: liveProfileDoc } = useFirestoreUserDoc(
+    user?.uid && userDoc?.role === "learner" ? user.uid : null,
+  );
 
   useEffect(() => {
     return subscribePendingRequestCount(isInstructor ? user?.uid ?? null : null, setPendingCount);
@@ -124,10 +128,16 @@ function HomeTab() {
     return subscribeLatestReceivedReviewStars(user?.uid ?? null, setLatestReviewStars);
   }, [isInstructor, user?.uid]);
 
-  const nextMeeting = useMemo(
-    () => getNextUpcomingMeeting(engagementRows),
-    [engagementRows],
-  );
+  const nextMeeting = useNextJoinableHomeMeeting(engagementRows);
+
+  const learnerBudget = useMemo(() => {
+    if (userDoc?.role !== "learner") return null;
+    const src = liveProfileDoc ?? userDoc;
+    const cap = src.learningBudgetCapUsd;
+    const spent = src.learningBudgetSpentUsd ?? 0;
+    const remaining = cap != null && Number.isFinite(cap) ? cap - spent : null;
+    return { cap, spent, remaining };
+  }, [liveProfileDoc, userDoc]);
 
   const studentsTutoredCount = useMemo(() => {
     if (!isInstructor) return 0;
@@ -478,6 +488,69 @@ function HomeTab() {
               )}
             </section>
           ) : (
+            <>
+            {learnerBudget ? (
+              <section className="rounded-lg border border-[#2fc5b5]/40 bg-[#0b1510]/80 p-5 backdrop-blur">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a6eee3]">
+                      Budget
+                    </p>
+                    <h2 className="mt-2 text-xl font-black leading-tight text-[#fffdf5]">
+                      {learnerBudget.cap != null ? (
+                        <>
+                          {new Intl.NumberFormat(undefined, {
+                            style: "currency",
+                            currency: "USD",
+                            maximumFractionDigits: 0,
+                          }).format(learnerBudget.cap)}{" "}
+                          <span className="text-sm font-semibold text-[#e8f4df]/60">cap</span>
+                        </>
+                      ) : (
+                        "Set your budget"
+                      )}
+                    </h2>
+                    <p className="mt-1 text-sm font-semibold text-[#e8f4df]/70">
+                      {learnerBudget.cap != null && learnerBudget.remaining != null ? (
+                        <>
+                          Remaining{" "}
+                          <span
+                            className={
+                              learnerBudget.remaining < 0
+                                ? "text-[#ff6b6b]"
+                                : "text-[#2fc5b5]"
+                            }
+                          >
+                            {new Intl.NumberFormat(undefined, {
+                              style: "currency",
+                              currency: "USD",
+                              maximumFractionDigits: 0,
+                            }).format(learnerBudget.remaining)}
+                          </span>{" "}
+                          after{" "}
+                          {new Intl.NumberFormat(undefined, {
+                            style: "currency",
+                            currency: "USD",
+                            maximumFractionDigits: 0,
+                          }).format(learnerBudget.spent)}{" "}
+                          spent
+                        </>
+                      ) : (
+                        "Set a cap on Profile — completed sessions deduct hours × tutor rate."
+                      )}
+                    </p>
+                  </div>
+                  <DollarSign className="h-6 w-6 shrink-0 text-[#2fc5b5]" />
+                </div>
+                <Link
+                  to="/app/profile"
+                  className="mt-4 flex items-center justify-between rounded-lg border border-[#fffdf5]/12 bg-[#fffdf5]/6 px-3 py-2.5 text-sm font-black text-[#fffdf5] transition hover:bg-[#fffdf5]/10"
+                >
+                  Edit budget on Profile
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </section>
+            ) : null}
             <section className="rounded-lg border border-[#fffdf5]/20 bg-[#fffdf5]/10 p-6 backdrop-blur">
               <div className="mb-5 flex items-center justify-between">
                 <div>
@@ -507,6 +580,7 @@ function HomeTab() {
                 ))}
               </div>
             </section>
+            </>
           )}
 
           <section className="grid gap-3">
@@ -536,7 +610,10 @@ function HomeTab() {
               {nextMeeting ? (
                 <Link
                   to="/app/meeting"
-                  search={{ engagementId: nextMeeting.engagementId }}
+                  search={{
+                    engagementId: nextMeeting.engagementId,
+                    sessionIndex: nextMeeting.sessionIndex,
+                  }}
                   className="mt-5 block w-full rounded-lg bg-[#11140c]/10 px-3 py-3 text-center text-sm font-black transition hover:bg-[#11140c]/16"
                 >
                   Join meeting

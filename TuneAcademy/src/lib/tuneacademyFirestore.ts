@@ -6,12 +6,13 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { getFirebaseStorage, getFirestoreDb } from "@/lib/firebase";
+import { getFirebaseAuth, getFirebaseStorage, getFirestoreDb } from "@/lib/firebase";
 import type { WeeklyTimeSlot } from "@/lib/scheduling";
 import { slotKey } from "@/lib/scheduling";
 
@@ -25,6 +26,10 @@ export type UserFirestoreDoc = {
   avatarUrl: string;
   /** Learner-written bio; stored on `users/{uid}` for students. */
   bio?: string;
+  /** Learner: total tutoring budget cap (USD). Omitted = not configured. */
+  learningBudgetCapUsd?: number;
+  /** Learner: total spent from completed sessions (USD), incremented by TuneAcademy. */
+  learningBudgetSpentUsd?: number;
   createdAt?: unknown;
 };
 
@@ -33,6 +38,9 @@ export type UserFirestoreDoc = {
 export type InstructorReceivedReviewDoc = {
   learnerId: string;
   stars: number;
+  reviewText?: string;
+  engagementId?: string;
+  sessionIndex?: number;
   createdAt?: unknown;
 };
 
@@ -67,6 +75,34 @@ export async function createUserFirestoreDoc(
     fullName: data.fullName,
     email: data.email,
     avatarUrl: "",
+    ...(data.role === "learner" ? { learningBudgetSpentUsd: 0 } : {}),
+    createdAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Session reviews require `users/{uid}` for security rules. Creates a minimal learner profile when
+ * missing (e.g. account existed before Firestore onboarding).
+ */
+export async function ensureSignedInLearnerUserDocForReview(): Promise<void> {
+  const u = getFirebaseAuth().currentUser;
+  if (!u) throw new Error("You must be signed in to submit a review.");
+  const db = getFirestoreDb();
+  const ref = doc(db, "users", u.uid);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const role = (snap.data() as { role?: UserRole }).role;
+    if (role === "instructor") {
+      throw new Error("Only students can submit session reviews.");
+    }
+    return;
+  }
+  await setDoc(ref, {
+    role: "learner",
+    fullName: u.displayName?.trim() || "Student",
+    email: u.email?.trim() || "",
+    avatarUrl: "",
+    learningBudgetSpentUsd: 0,
     createdAt: serverTimestamp(),
   });
 }
@@ -86,6 +122,78 @@ export async function updateLearnerBio(uid: string, bio: string): Promise<void> 
   }
   await updateDoc(doc(getFirestoreDb(), "users", uid), {
     bio: trimmed,
+  });
+}
+
+const LEARNER_BUDGET_MAX_USD = 1_000_000;
+
+export async function updateLearnerBudgetCap(uid: string, capUsd: number): Promise<void> {
+  if (!Number.isFinite(capUsd) || capUsd < 0) {
+    throw new Error("Budget must be zero or a positive number.");
+  }
+  const rounded = Math.round(capUsd * 100) / 100;
+  if (rounded > LEARNER_BUDGET_MAX_USD) {
+    throw new Error(`Budget cannot exceed ${LEARNER_BUDGET_MAX_USD.toLocaleString()} USD.`);
+  }
+  await updateDoc(doc(getFirestoreDb(), "users", uid), {
+    learningBudgetCapUsd: rounded,
+  });
+}
+
+const REVIEW_TEXT_MAX = 2000;
+
+export async function submitInstructorSessionReview(args: {
+  instructorId: string;
+  learnerId: string;
+  engagementId: string;
+  sessionIndex: number;
+  stars: number;
+  reviewText: string;
+}): Promise<void> {
+  const auth = getFirebaseAuth();
+  if (auth.currentUser?.uid !== args.learnerId) {
+    throw new Error("You must be signed in as the student who took this session.");
+  }
+  await ensureSignedInLearnerUserDocForReview();
+
+  const s = Math.round(Math.min(5, Math.max(1, Number(args.stars))));
+  if (!Number.isFinite(s) || s < 1 || s > 5) throw new Error("Stars must be between 1 and 5.");
+  const sessionIdx = Math.floor(Math.max(0, Number(args.sessionIndex)));
+  if (!Number.isFinite(sessionIdx)) throw new Error("Invalid session.");
+  const text = args.reviewText.trim().slice(0, REVIEW_TEXT_MAX);
+  const engagementKey = args.engagementId.trim();
+  /** Must match Firestore rules `reviewId` pattern (string index). */
+  const reviewId = `${args.learnerId}_${engagementKey}_${String(sessionIdx)}`;
+  const db = getFirestoreDb();
+
+  await runTransaction(db, async (tx) => {
+    const revRef = doc(db, "instructors", args.instructorId, "receivedReviews", reviewId);
+    const revSnap = await tx.get(revRef);
+    if (revSnap.exists()) throw new Error("You already reviewed this session.");
+
+    const instRef = doc(db, "instructors", args.instructorId);
+    const instSnap = await tx.get(instRef);
+    if (!instSnap.exists()) throw new Error("Instructor not found.");
+
+    const row = instSnap.data() as InstructorFirestoreDoc;
+    const prevCount = Math.floor(Number(row.reviewCount ?? 0));
+    const prevRating = Number(row.rating ?? 0);
+    const n = prevCount + 1;
+    const newRating = prevCount === 0 ? s : (prevRating * prevCount + s) / n;
+    const ratingOut = Math.round(newRating * 10) / 10;
+
+    tx.set(revRef, {
+      learnerId: args.learnerId,
+      stars: s,
+      reviewText: text,
+      engagementId: engagementKey,
+      sessionIndex: sessionIdx,
+      createdAt: serverTimestamp(),
+    });
+    tx.update(instRef, {
+      rating: ratingOut,
+      reviewCount: n,
+    });
   });
 }
 
