@@ -34,6 +34,15 @@ const SESSION_TYPES = [
   { value: "both", label: "Both", description: "Offer both session types" },
 ] as const;
 
+/** Static onboarding-only options (not persisted). */
+const SPECIFIC_STRENGTHS = [
+  "Rythm",
+  "Pitch Centre",
+  "Tone Quality",
+  "Pitch Stability",
+  "Note Attack",
+] as const;
+
 type SessionType = "solo" | "group" | "both";
 
 function Onboarding() {
@@ -56,6 +65,7 @@ function Onboarding() {
   const [groupRate, setGroupRate] = useState("");
   const [sessionType, setSessionType] = useState<SessionType | "">("");
   const [specs, setSpecs] = useState<string[]>([]);
+  const [specificStrengths, setSpecificStrengths] = useState<string[]>([]);
   const [instructorTeachingLevels, setInstructorTeachingLevels] = useState<string[]>([]);
   const [bio, setBio] = useState("");
   const [weeklyAvailability, setWeeklyAvailability] = useState<WeeklyTimeSlot[]>([]);
@@ -360,6 +370,25 @@ function Onboarding() {
                   onClick={() => setSpecs((v) => active ? v.filter((x) => x !== s) : [...v, s])}>{s}</Chip>;
               })}
             </div>
+
+            <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">Specific strenghts</p>
+            <div className="flex flex-wrap gap-2">
+              {SPECIFIC_STRENGTHS.map((s) => {
+                const active = specificStrengths.includes(s);
+                return (
+                  <Chip
+                    key={s}
+                    active={active}
+                    onClick={() =>
+                      setSpecificStrengths((v) => (active ? v.filter((x) => x !== s) : [...v, s]))
+                    }
+                  >
+                    {s}
+                  </Chip>
+                );
+              })}
+            </div>
+
             <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
               Levels you want to teach <span className="text-red-400">*</span>
             </p>

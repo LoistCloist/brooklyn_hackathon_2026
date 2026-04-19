@@ -17,11 +17,9 @@ import {
 } from "@/lib/tutoringFirestore";
 import { submitInstructorSessionReview } from "@/lib/tuneacademyFirestore";
 import { cn } from "@/lib/utils";
-import { Check, Clock, ExternalLink, Lock, ShieldCheck, Star, Video } from "lucide-react";
+import { Check, Clock, ExternalLink, ShieldCheck, Star, Video } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-
-const JOIN_UNLOCK_MS = 10 * 60 * 1000;
 
 const searchSchema = z.object({
    engagementId: z.string().optional(),
@@ -55,7 +53,6 @@ function MeetingJoinPage() {
    const [reviewText, setReviewText] = useState("");
    const [reviewBusy, setReviewBusy] = useState(false);
    const [alreadyReviewed, setAlreadyReviewed] = useState(false);
-   const [nowMs, setNowMs] = useState(Date.now());
 
    useEffect(() => {
       setStars(0);
@@ -98,11 +95,6 @@ function MeetingJoinPage() {
       return subscribeMeetSession(engagementId, sessionIndex, setMeetSess);
    }, [engagementId, sessionIndex]);
 
-   useEffect(() => {
-      const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
-      return () => window.clearInterval(id);
-   }, []);
-
    const role = useMemo<"learner" | "instructor" | null>(() => {
       if (!user || !eng) return null;
       if (eng.learnerId === user.uid) return "learner";
@@ -123,23 +115,11 @@ function MeetingJoinPage() {
    }, [eng, sessionIndex]);
 
    const sessionComplete = meetSess?.sessionCompletedAt != null;
-   const joinState = useMemo(() => {
-      if (!meetingWindow) return { allowed: false, label: "Locked", note: "Session time unavailable." };
-      const startMs = meetingWindow.start.getTime();
-      const endMs = meetingWindow.end.getTime();
-      const unlockMs = startMs - JOIN_UNLOCK_MS;
-      if (nowMs < unlockMs) {
-         return {
-            allowed: false,
-            label: "Locked",
-            note: `Unlocks at ${new Date(unlockMs).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}.`,
-         };
-      }
-      if (nowMs > endMs) {
-         return { allowed: false, label: "Session ended", note: "This room is no longer available." };
-      }
-      return { allowed: true, label: "Join window open", note: "Open through TuneAcademy so attendance and billing stay protected." };
-   }, [meetingWindow, nowMs]);
+   /** Hackathon demo: no calendar-window lock; join is always allowed for valid sessions. */
+   const joinState = {
+      label: "Ready to join",
+      note: "Open through TuneAcademy so attendance and billing stay protected.",
+   } as const;
 
    useEffect(() => {
       if (!user || !eng || role !== "learner" || !sessionComplete) {
@@ -158,10 +138,6 @@ function MeetingJoinPage() {
 
    async function onOpenMeet() {
       if (!user || !role) return;
-      if (!joinState.allowed) {
-         toast.message(joinState.note);
-         return;
-      }
       setOpening(true);
       try {
          const res = await recordMeetLinkOpened({ uid: user.uid, engagementId, sessionIndex, role });
@@ -264,8 +240,8 @@ function MeetingJoinPage() {
                      </div>
                      <h1 className="mt-4 text-2xl font-black tracking-tight">Google Meet session</h1>
                      <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                        TuneAcademy keeps the Meet room hidden until class time. The session is counted complete once{" "}
-                        <span className="font-semibold text-foreground">both</span> the student and instructor join through this page.
+                        TuneAcademy opens the Meet room through this page only (the URL is not shown here). The session is counted complete
+                        once <span className="font-semibold text-foreground">both</span> the student and instructor join through this page.
                      </p>
                   </div>
 
@@ -290,28 +266,22 @@ function MeetingJoinPage() {
                         <div>
                            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Protected Meet room</p>
                            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                              The raw Google Meet URL stays hidden. Join opens only inside the scheduled window.
+                              The raw Google Meet URL stays hidden. For this demo build, Join is available anytime before the session is
+                              cancelled.
                            </p>
                         </div>
-                        <span
-                           className={cn(
-                              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold",
-                              joinState.allowed
-                                 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                                 : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-                           )}
-                        >
-                           {joinState.allowed ? <ShieldCheck className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                           <ShieldCheck className="h-3.5 w-3.5" />
                            {joinState.label}
                         </span>
                      </div>
-                     <div className="rounded-lg bg-muted/40 px-3 py-2 text-sm font-semibold text-foreground">Link hidden until join</div>
+                     <div className="rounded-lg bg-muted/40 px-3 py-2 text-sm font-semibold text-foreground">Meet opens when you tap Join</div>
                      <p className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Clock className="h-3.5 w-3.5" />
                         {joinState.note}
                      </p>
                      <div className="flex flex-wrap gap-2">
-                        <Button type="button" className="gap-2" onClick={() => void onOpenMeet()} disabled={opening || !joinState.allowed}>
+                        <Button type="button" className="gap-2" onClick={() => void onOpenMeet()} disabled={opening}>
                            <ExternalLink className="h-4 w-4" />
                            {opening ? "Opening..." : "Join through TuneAcademy"}
                         </Button>
@@ -328,7 +298,7 @@ function MeetingJoinPage() {
                         <ShieldCheck className="h-4 w-4" />
                         Leakage Shield
                      </p>
-                     <p className="text-muted-foreground">Meet link hidden before class</p>
+                     <p className="text-muted-foreground">Meet link not shown on this page</p>
                      <p className="text-muted-foreground">No copy-link sharing from the session page</p>
                      <p className="text-muted-foreground">Attendance tracked before budget is charged</p>
                   </div>
