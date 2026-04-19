@@ -83,6 +83,8 @@ type RecordingRow = {
    instrument?: string;
    challenge?: string;
    overallScore?: number;
+   dimensionScores?: Record<string, number>;
+   weaknesses?: string[];
    status?: string;
    createdAt?: { seconds: number } | null;
    audioUrl?: string;
@@ -247,6 +249,8 @@ function ProfileTab() {
                      instrument: data.instrument,
                      challenge: data.challenge,
                      overallScore: data.overallScore,
+                     dimensionScores: data.dimensionScores ?? undefined,
+                     weaknesses: data.weaknesses ?? undefined,
                      status: data.status,
                      createdAt: data.createdAt ?? null,
                      audioUrl,
@@ -260,7 +264,7 @@ function ProfileTab() {
             // derive latest report for AI Skills Analysis section
             const latest = rows.find((r) => r.overallScore != null) ?? rows[0];
             if (latest) {
-               setReport({ instrument: latest.instrument, overallScore: latest.overallScore });
+               setReport({ instrument: latest.instrument, overallScore: latest.overallScore, weaknesses: latest.weaknesses });
             }
          });
 
@@ -305,7 +309,7 @@ function ProfileTab() {
          const nextRecordings = recordings.filter((r) => r.id !== rec.id);
          setRecordings(nextRecordings);
          const latest = nextRecordings.find((r) => r.overallScore != null) ?? nextRecordings[0];
-         setReport(latest ? { instrument: latest.instrument, overallScore: latest.overallScore } : null);
+         setReport(latest ? { instrument: latest.instrument, overallScore: latest.overallScore, weaknesses: latest.weaknesses } : null);
          setExpandedIds((prev) => {
             const next = new Set(prev);
             next.delete(rec.id);
@@ -970,17 +974,31 @@ function ProfileTab() {
                                        ) : (
                                           <>
                                              <p className="text-xs font-bold uppercase tracking-widest text-[#e8f4df]/40 mb-2">Breakdown</p>
-                                             {["Pitch accuracy", "Rhythm", "Tone quality", "Note attack", "Pitch stability"].map(
-                                                (label) => (
-                                                   <div key={label} className="space-y-1">
+                                             {(
+                                                [
+                                                   { key: "pitch_centre", label: "Pitch Centre" },
+                                                   { key: "pitch_stability", label: "Pitch Stability" },
+                                                   { key: "rhythm", label: "Rhythm" },
+                                                   { key: "tone_quality", label: "Tone Quality" },
+                                                   { key: "note_attack", label: "Note Attack" },
+                                                ] as const
+                                             ).map(({ key, label }) => {
+                                                const val = rec.dimensionScores?.[key] ?? 0;
+                                                return (
+                                                   <div key={key} className="space-y-1">
                                                       <div className="flex justify-between text-xs text-[#e8f4df]/55">
                                                          <span>{label}</span>
-                                                         <span className="text-[#ffd666]/60">—</span>
+                                                         <span className="text-[#ffd666]/60">{val}</span>
                                                       </div>
-                                                      <div className="h-1.5 w-full rounded-full bg-[#fffdf5]/8" />
+                                                      <div className="h-1.5 w-full rounded-full bg-[#fffdf5]/8">
+                                                         <div
+                                                            className="h-full rounded-full bg-[#ffd666]/60"
+                                                            style={{ width: `${val}%` }}
+                                                         />
+                                                      </div>
                                                    </div>
-                                                ),
-                                             )}
+                                                );
+                                             })}
                                           </>
                                        )}
                                     </div>

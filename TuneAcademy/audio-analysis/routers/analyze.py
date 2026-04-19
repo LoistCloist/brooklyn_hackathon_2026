@@ -63,8 +63,14 @@ def _pitch_scores(audio) -> tuple[int, int]:
         stability = 50
     else:
         arr = np.array(pitches, dtype=np.float32)
-        cv = float(np.std(arr) / (np.mean(arr) + 1e-6))
-        stability = int(max(0, min(100, 100 - cv * 400)))
+        midi = 12.0 * np.log2(arr / 440.0 + 1e-9) + 69.0
+        diffs = np.abs(np.diff(midi))
+        within_note = diffs[diffs < 0.5]  # ignore note transitions (>0.5 semitone)
+        if len(within_note) == 0:
+            stability = 100
+        else:
+            mean_wobble = float(np.mean(within_note))  # semitones
+            stability = int(max(0, min(100, 100 - mean_wobble * 200)))
 
     return centre, stability
 
@@ -181,6 +187,8 @@ async def analyze(
                     "reference_id": reference_id,
                     **comparison.__dict__,
                 }
+                result["dimension_scores"]["rhythm"] = comparison.timing_accuracy
+                result["overall_score"] = int(round(sum(result["dimension_scores"].values()) / len(result["dimension_scores"])))
             except KeyError as exc:
                 print(f"[analyze] reference track not found, skipping comparison: {exc}")
                 result["comparison_error"] = str(exc)

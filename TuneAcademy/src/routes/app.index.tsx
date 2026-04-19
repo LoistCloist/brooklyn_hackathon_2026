@@ -18,6 +18,8 @@ import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
 import { ArrowRight, Bell, CalendarDays, DollarSign, Flame, LogOut, Mic, Sparkles, Star, TrendingUp, Trophy, Users } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot, orderBy, query, limit as firestoreLimit, where } from "firebase/firestore";
+import { getFirestoreDb } from "@/lib/firebase";
 
 function initialsFromProfile(fullName: string | undefined, email: string | undefined): string {
    const name = fullName?.trim();
@@ -33,24 +35,6 @@ function initialsFromProfile(fullName: string | undefined, email: string | undef
 }
 
 export const Route = createFileRoute("/app/")({ head: () => ({ meta: [{ title: "Home - TuneAcademy" }] }), component: HomeTab });
-
-const placeholderStats = [
-   { label: "Practice streak", value: "6", suffix: "days" },
-   { label: "Latest score", value: "82", suffix: "/100" },
-   { label: "Focus", value: "Timing", suffix: "" },
-];
-
-const focusTargets = [
-   { label: "Lock in rests before fast runs", tag: "Rhythm", color: "bg-[#ff6b6b]" },
-   { label: "Keep pitch centered on sustained notes", tag: "Pitch", color: "bg-[#ffd666]" },
-   { label: "Smooth attack on the first beat", tag: "Tone", color: "bg-[#2fc5b5]" },
-];
-
-const progressBars = [
-   { label: "Rhythm", value: 78, color: "bg-[#ff6b6b]" },
-   { label: "Pitch center", value: 84, color: "bg-[#ffd666]" },
-   { label: "Dynamics", value: 69, color: "bg-[#2fc5b5]" },
-];
 
 const learnerHeroGlow = {
    size: "40rem",
@@ -88,6 +72,7 @@ function HomeTab() {
    const [latestReviewStars, setLatestReviewStars] = useState<number | null>(null);
    const [leaderboardNames, setLeaderboardNames] = useState<Record<string, string>>({});
    const { user: liveProfileDoc } = useFirestoreUserDoc(user?.uid && userDoc?.role === "learner" ? user.uid : null);
+   const [latestReport, setLatestReport] = useState<{ overallScore: number; weaknesses: string[]; dimensionScores: Record<string, number> } | null>(null);
 
    useEffect(() => {
       return subscribePendingRequestCount(isInstructor ? (user?.uid ?? null) : null, setPendingCount);
@@ -113,6 +98,26 @@ function HomeTab() {
       }
       return subscribeLatestReceivedReviewStars(user?.uid ?? null, setLatestReviewStars);
    }, [isInstructor, user?.uid]);
+
+   useEffect(() => {
+      if (!user?.uid || isInstructor) { setLatestReport(null); return; }
+      const q = query(
+         collection(getFirestoreDb(), "reports"),
+         where("userId", "==", user.uid),
+         where("status", "==", "done"),
+         orderBy("createdAt", "desc"),
+         firestoreLimit(1),
+      );
+      return onSnapshot(q, (snap) => {
+         if (snap.empty) { setLatestReport(null); return; }
+         const d = snap.docs[0].data();
+         setLatestReport({
+            overallScore: d.overallScore ?? 0,
+            weaknesses: d.weaknesses ?? [],
+            dimensionScores: d.dimensionScores ?? {},
+         });
+      });
+   }, [user?.uid, isInstructor]);
 
    const nextMeeting = useNextJoinableHomeMeeting(engagementRows);
 
@@ -372,13 +377,21 @@ function HomeTab() {
                      </motion.section>
 
                      <section className="grid gap-4 md:grid-cols-3">
-                        {placeholderStats.map((stat) => (
-                           <div key={stat.label} className="min-h-36 rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-5">
-                              <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#e8f4df]/55">{stat.label}</p>
-                              <p className="mt-8 text-5xl font-black leading-none text-[#fffdf5]">{stat.value}</p>
-                              {stat.suffix && <p className="mt-2 text-sm font-semibold text-[#ffd666]">{stat.suffix}</p>}
-                           </div>
-                        ))}
+                        <div className="min-h-36 rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-5">
+                           <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#e8f4df]/55">Latest score</p>
+                           <p className="mt-8 text-5xl font-black leading-none text-[#fffdf5]">{latestReport ? latestReport.overallScore : "—"}</p>
+                           {latestReport && <p className="mt-2 text-sm font-semibold text-[#ffd666]">/100</p>}
+                        </div>
+                        <div className="min-h-36 rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-5">
+                           <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#e8f4df]/55">Pitch centre</p>
+                           <p className="mt-8 text-5xl font-black leading-none text-[#fffdf5]">{latestReport ? (latestReport.dimensionScores.pitch_centre ?? "—") : "—"}</p>
+                           {latestReport && <p className="mt-2 text-sm font-semibold text-[#ffd666]">/100</p>}
+                        </div>
+                        <div className="min-h-36 rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-5">
+                           <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#e8f4df]/55">Rhythm</p>
+                           <p className="mt-8 text-5xl font-black leading-none text-[#fffdf5]">{latestReport ? (latestReport.dimensionScores.rhythm ?? "—") : "—"}</p>
+                           {latestReport && <p className="mt-2 text-sm font-semibold text-[#ffd666]">/100</p>}
+                        </div>
                      </section>
 
                      <section className="rounded-lg border border-[#fffdf5]/20 bg-[#0b1510]/55 p-6">
@@ -390,18 +403,23 @@ function HomeTab() {
                            <Sparkles className="h-5 w-5 text-[#ffd666]" />
                         </div>
                         <div className="mt-5 grid gap-3 lg:grid-cols-3">
-                           {focusTargets.map((target) => (
-                              <div
-                                 key={target.label}
-                                 className="flex min-h-32 items-start gap-3 rounded-lg border border-[#fffdf5]/12 bg-[#fffdf5]/7 p-4"
-                              >
-                                 <span className={`h-16 w-1.5 rounded-lg ${target.color}`} />
-                                 <div className="min-w-0 flex-1">
-                                    <p className="text-base font-bold leading-6 text-[#fffdf5]">{target.label}</p>
-                                    <p className="mt-1 text-xs font-semibold text-[#e8f4df]/55">{target.tag}</p>
+                           {latestReport && latestReport.weaknesses.length > 0 ? (
+                              latestReport.weaknesses.slice(0, 3).map((w, i) => (
+                                 <div
+                                    key={i}
+                                    className="flex min-h-32 items-start gap-3 rounded-lg border border-[#fffdf5]/12 bg-[#fffdf5]/7 p-4"
+                                 >
+                                    <span className={`h-16 w-1.5 rounded-lg ${["bg-[#ff6b6b]", "bg-[#ffd666]", "bg-[#2fc5b5]"][i % 3]}`} />
+                                    <div className="min-w-0 flex-1">
+                                       <p className="text-base font-bold leading-6 text-[#fffdf5]">{w}</p>
+                                    </div>
                                  </div>
+                              ))
+                           ) : (
+                              <div className="col-span-3 rounded-lg border border-[#fffdf5]/12 bg-[#fffdf5]/7 p-6 text-center">
+                                 <p className="text-sm text-[#e8f4df]/55">Record a take to see your focus areas.</p>
                               </div>
-                           ))}
+                           )}
                         </div>
                      </section>
                   </>
@@ -519,22 +537,33 @@ function HomeTab() {
                            <TrendingUp className="h-5 w-5 text-[#a6eee3]" />
                         </div>
                         <div className="space-y-6">
-                           {progressBars.map((bar) => (
-                              <div key={bar.label}>
-                                 <div className="mb-2 flex justify-between text-sm font-semibold">
-                                    <span>{bar.label}</span>
-                                    <span className="text-[#e8f4df]/65">{bar.value}%</span>
+                           {(
+                              [
+                                 { key: "rhythm", label: "Rhythm", color: "bg-[#ff6b6b]" },
+                                 { key: "pitch_centre", label: "Pitch centre", color: "bg-[#ffd666]" },
+                                 { key: "tone_quality", label: "Tone quality", color: "bg-[#2fc5b5]" },
+                                 { key: "pitch_stability", label: "Pitch stability", color: "bg-[#a78bfa]" },
+                                 { key: "note_attack", label: "Note attack", color: "bg-[#fb923c]" },
+                              ] as const
+                           ).map((bar) => {
+                              const val = latestReport?.dimensionScores[bar.key] ?? 0;
+                              return (
+                                 <div key={bar.key}>
+                                    <div className="mb-2 flex justify-between text-sm font-semibold">
+                                       <span>{bar.label}</span>
+                                       <span className="text-[#e8f4df]/65">{latestReport ? `${val}%` : "—"}</span>
+                                    </div>
+                                    <div className="h-2 rounded-lg bg-[#fffdf5]/14">
+                                       <motion.div
+                                          className={`h-full rounded-lg ${bar.color}`}
+                                          initial={{ width: 0 }}
+                                          animate={{ width: `${val}%` }}
+                                          transition={{ duration: 0.9, delay: 0.15 }}
+                                       />
+                                    </div>
                                  </div>
-                                 <div className="h-2 rounded-lg bg-[#fffdf5]/14">
-                                    <motion.div
-                                       className={`h-full rounded-lg ${bar.color}`}
-                                       initial={{ width: 0 }}
-                                       animate={{ width: `${bar.value}%` }}
-                                       transition={{ duration: 0.9, delay: 0.15 }}
-                                    />
-                                 </div>
-                              </div>
-                           ))}
+                              );
+                           })}
                         </div>
                      </section>
                   </>
