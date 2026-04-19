@@ -347,7 +347,7 @@ function MeetingJoinPage() {
             </div>
 
             {role === "learner" && sessionComplete && !alreadyReviewed ? (
-              <div className="space-y-4 rounded-2xl border border-[#ffd666]/35 bg-[#ffd666]/10 p-5 text-[#11140c]">
+              <div className="space-y-4 rounded-2xl border border-[#ffd666]/35 bg-[#ffd666] p-5 text-[#11140c] shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
                 <div className="flex items-center gap-2">
                   <Star className="h-5 w-5 fill-[#11140c]/90 text-[#11140c]/90" strokeWidth={0} />
                   <p className="text-sm font-black uppercase tracking-widest">Rate this session</p>
@@ -360,7 +360,7 @@ function MeetingJoinPage() {
                   onMouseLeave={() => setHoverRating(null)}
                 >
                   <div
-                    className="flex gap-0.5 rounded-xl border border-[#11140c]/12 bg-[#fffdf5]/40 p-2"
+                    className="flex gap-0.5 rounded-xl border border-[#11140c]/12 bg-[#11140c]/10 p-2"
                     role="radiogroup"
                     aria-label="Rate this session from 1 to 5 stars"
                   >

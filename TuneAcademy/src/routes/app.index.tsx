@@ -445,7 +445,14 @@ function HomeTab() {
 
         <aside className="space-y-5">
           {isInstructor ? (
-            <section className="rounded-lg border border-[#ffd666]/35 bg-[#ffd666]/12 p-6 backdrop-blur">
+            <section
+              className={
+                "rounded-lg border p-6 backdrop-blur transition-all duration-300 " +
+                (pendingCount > 0
+                  ? "border-[#ffd666]/35 bg-[#ffd666] text-[#11140c] shadow-[0_0_42px_rgba(255,214,102,0.42)]"
+                  : "border-[#ffd666]/35 bg-[#ffd666]/12 text-[#11140c]")
+              }
+            >
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-[#11140c]/70">
@@ -455,7 +462,12 @@ function HomeTab() {
                     Tutoring requests
                   </h2>
                 </div>
-                <Bell className="h-5 w-5 text-[#11140c]/80" />
+                <Bell
+                  className={
+                    "h-5 w-5 text-[#11140c]/80 " +
+                    (pendingCount > 0 ? "animate-pulse fill-[#11140c]/20" : "")
+                  }
+                />
               </div>
               {pendingCount > 0 ? (
                 <div className="space-y-3 text-[#11140c]">
