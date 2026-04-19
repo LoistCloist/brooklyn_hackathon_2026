@@ -17,7 +17,7 @@ import * as midiPackage from "@tonejs/midi";
 import Soundfont from "soundfont-player";
 
 export const Route = createFileRoute("/app/analyze")({
-   head: () => ({ meta: [{ title: "Analyze â€” TuneAcademy" }] }),
+   head: () => ({ meta: [{ title: "Analyze - TuneAcademy" }] }),
    component: AnalyzeTab,
 });
 
@@ -25,7 +25,7 @@ type ChallengeKey = keyof typeof challenges;
 type Step = "pick-instrument" | "record";
 const Midi = ((midiPackage as any).Midi ?? (midiPackage as any).default?.Midi) as typeof import("@tonejs/midi").Midi;
 
-// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Types ---------------------------------------------------------------------
 
 interface TrackInfo {
    track_id: string;
@@ -46,7 +46,7 @@ interface SongInfo {
    midi_url?: string;
 }
 
-// â”€â”€ WAV encoding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- WAV encoding --------------------------------------------------------------
 
 function writeString(view: DataView, offset: number, str: string) {
    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
@@ -77,7 +77,7 @@ function encodeWav(samples: Float32Array, sampleRate: number): Blob {
    return new Blob([buf], { type: "audio/wav" });
 }
 
-// â”€â”€ MIDI player â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- MIDI player ---------------------------------------------------------------
 
 const LOOKAHEAD = 0.3;
 const SCHEDULE_INTERVAL = 100;
@@ -330,7 +330,7 @@ function useMidiPlayer(midiUrl: string | undefined) {
    return { playing, loadingMidi, play, stop };
 }
 
-// â”€â”€ Inline MIDI section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Inline MIDI section -------------------------------------------------------
 
 function SelectedMidiCard({ label, sub, midiUrl, onClear }: { label: string; sub?: string; midiUrl?: string; onClear: () => void }) {
    const { playing, loadingMidi, play } = useMidiPlayer(midiUrl);
@@ -419,7 +419,7 @@ function MidiSection({
 
    const hasSelection = selectedTrack !== null || selectedSong !== null;
    const selectionLabel = selectedTrack
-      ? `${selectedTrack.progression} â€” ${selectedTrack.key}`
+      ? `${selectedTrack.progression} - ${selectedTrack.key}`
       : selectedSong
         ? (selectedSong.title ?? selectedSong.track_id)
         : null;
@@ -507,7 +507,7 @@ function MidiSection({
                           >
                              <div>
                                 <p className="text-sm font-semibold">
-                                   {track.progression} â€” {track.key}
+                                   {track.progression} - {track.key}
                                 </p>
                                 <p className="mt-0.5 text-xs text-muted-foreground capitalize">
                                    {track.style} Â· {track.tempo} BPM
@@ -549,7 +549,7 @@ function MidiSection({
    );
 }
 
-// â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Main component ------------------------------------------------------------
 
 function AnalyzeTab() {
    const navigate = useNavigate();
@@ -679,9 +679,9 @@ function AnalyzeTab() {
             wavBlob,
             instrument: c.instrument,
             challenge: selectedTrack
-               ? `${selectedTrack.progression} â€” ${selectedTrack.key} (${selectedTrack.style}, ${selectedTrack.tempo} BPM)`
+               ? `${selectedTrack.progression} - ${selectedTrack.key} (${selectedTrack.style}, ${selectedTrack.tempo} BPM)`
                : selectedSong
-                 ? `${selectedSong.title} â€” ${selectedSong.artist}`
+                 ? `${selectedSong.title} - ${selectedSong.artist}`
                  : c.instrument,
             name: name.trim() || `${c.instrument} take`,
             referenceId: selectedTrack?.track_id ?? selectedSong?.track_id,
@@ -696,7 +696,7 @@ function AnalyzeTab() {
       return <Outlet />;
    }
 
-   // â”€â”€ Pick instrument â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   // --- Pick instrument ----------------------------------------------------------
    if (step === "pick-instrument") {
       return (
          <AppShell>
@@ -748,7 +748,7 @@ function AnalyzeTab() {
       );
    }
 
-   // â”€â”€ Record + MIDI + Name â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   // -- Record + MIDI + Name -----------------------------------------------------
    if (step === "record" && picked) {
       const c = challenges[picked];
       const isGuitar = c.instrument === "Guitar";
