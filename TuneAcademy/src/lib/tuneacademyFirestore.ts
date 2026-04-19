@@ -24,6 +24,12 @@ export type UserFirestoreDoc = {
   fullName: string;
   email: string;
   avatarUrl: string;
+  /** Learner: self-reported level from onboarding (lowercase slug). */
+  skillLevel?: "beginner" | "intermediate" | "advanced";
+  /** Learner: instruments from onboarding. */
+  instruments?: string[];
+  /** Learner: set when onboarding finishes. */
+  onboardingComplete?: boolean;
   /** Learner-written bio; stored on `users/{uid}` for students. */
   bio?: string;
   /** Learner: total tutoring budget cap (USD). Omitted = not configured. */

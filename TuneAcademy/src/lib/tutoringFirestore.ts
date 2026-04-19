@@ -66,6 +66,8 @@ export type TutoringMeetSessionDoc = {
    instructorOpenedAt: Timestamp | null;
    sessionCompletedAt: Timestamp | null;
    budgetCharged: boolean;
+   /** USD charged to the learner when the session completes (same value used in `recordMeetLinkOpened`). */
+   chargedAmountUsd?: number;
    /** Set when either party cancels; both profiles read the same doc. */
    cancelledAt?: Timestamp | null;
 };
@@ -75,6 +77,23 @@ export const ENGAGEMENTS = "tutoringEngagements";
 export const MEET_SESSIONS = "meetSessions";
 
 export const TUTORING_MESSAGE_MAX = 2000;
+
+/**
+ * Billable amount for one scheduled meeting at a given hourly rate (kept in sync with `recordMeetLinkOpened`).
+ * Used for receipts when older `meetSessions` docs omit `chargedAmountUsd`.
+ */
+export function computeSessionChargeUsd(
+   meeting: { startAt: unknown; endAt: unknown } | undefined,
+   hourlyRate: number,
+): number {
+   if (!meeting) return 0;
+   const startMs = timestampToMillis(meeting.startAt as Timestamp | { seconds: number } | undefined);
+   const endMs = timestampToMillis(meeting.endAt as Timestamp | { seconds: number } | undefined);
+   if (startMs == null || endMs == null) return 0;
+   const hours = Math.max(0, (endMs - startMs) / 3_600_000);
+   const hourly = Number.isFinite(hourlyRate) ? hourlyRate : 0;
+   return Math.round(hours * hourly * 100) / 100;
+}
 
 export async function createTutoringRequest(payload: {
    learnerId: string;
@@ -396,16 +415,14 @@ export async function recordMeetLinkOpened(args: {
 
       const meeting = eng.meetings[sessionIndex];
       if (!meeting) throw new Error("Invalid session index.");
-
-      const startMs = timestampToMillis(meeting.startAt);
-      const endMs = timestampToMillis(meeting.endAt);
+      const startMs = timestampToMillis(meeting.startAt as never);
+      const endMs = timestampToMillis(meeting.endAt as never);
       if (startMs == null || endMs == null) throw new Error("Bad meeting times.");
 
-      const hours = Math.max(0, (endMs - startMs) / 3_600_000);
       const hourly = (instSnap.data() as { hourlyRate?: number } | undefined)?.hourlyRate ?? 0;
-      const chargeUsd = Math.round(hours * hourly * 100) / 100;
+      const chargeUsd = computeSessionChargeUsd(meeting, hourly);
 
-      tx.update(sessRef, { sessionCompletedAt: serverTimestamp(), budgetCharged: true });
+      tx.update(sessRef, { sessionCompletedAt: serverTimestamp(), budgetCharged: true, chargedAmountUsd: chargeUsd });
 
       if (chargeUsd > 0) {
          tx.update(userRef, { learningBudgetSpentUsd: increment(chargeUsd) });

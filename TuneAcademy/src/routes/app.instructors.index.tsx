@@ -6,6 +6,8 @@ import { Avatar } from "@/components/tuneacademy/Avatar";
 import { Card } from "@/components/tuneacademy/Card";
 import { Chip } from "@/components/tuneacademy/Chip";
 import { Pill } from "@/components/tuneacademy/Pill";
+import { useAuth } from "@/contexts/AuthContext";
+import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
 import { formatSpecialtyLabel, useInstructorsDirectory } from "@/hooks/useInstructorsDirectory";
 
 export const Route = createFileRoute("/app/instructors/")({
@@ -20,9 +22,30 @@ function initialsFromName(name: string): string {
    return (parts[0]?.[0] || "?").toUpperCase();
 }
 
+function learnerSkillLevelLabel(level: "beginner" | "intermediate" | "advanced"): string {
+   if (level === "beginner") return "Beginner";
+   if (level === "intermediate") return "Intermediate";
+   return "Advanced";
+}
+
+function formatTeachingLevelBadge(slug: string): string {
+   const s = slug.trim().toLowerCase();
+   if (s === "beginner") return "Beginner";
+   if (s === "intermediate") return "Intermediate";
+   if (s === "advanced") return "Advanced";
+   return formatSpecialtyLabel(slug);
+}
+
 function InstructorsTab() {
+   const { user, userDoc } = useAuth();
+   const { user: liveUserDoc } = useFirestoreUserDoc(user?.uid ?? null);
+   const learnerProfile = liveUserDoc ?? userDoc;
+   const learnerSkillLevel =
+      learnerProfile?.role === "learner" ? learnerProfile.skillLevel : undefined;
+
    const { rows, loading, error } = useInstructorsDirectory();
    const [filterSlug, setFilterSlug] = useState<string>("all");
+   const [matchMyLevel, setMatchMyLevel] = useState(false);
 
    const instrumentSlugs = useMemo(() => {
       const slugs = new Set<string>();
@@ -35,19 +58,48 @@ function InstructorsTab() {
    }, [instrumentSlugs]);
 
    const filtered = useMemo(() => {
-      if (filterSlug === "all") return rows;
-      return rows.filter((row) => row.doc.specialties.some((specialty) => specialty.trim().toLowerCase() === filterSlug));
-   }, [rows, filterSlug]);
+      return rows.filter((row) => {
+         if (filterSlug !== "all" && !row.doc.specialties.some((specialty) => specialty.trim().toLowerCase() === filterSlug)) {
+            return false;
+         }
+         if (matchMyLevel && learnerSkillLevel) {
+            const levels = row.doc.teachingLevels ?? [];
+            if (!levels.some((l) => l.trim().toLowerCase() === learnerSkillLevel)) return false;
+         }
+         return true;
+      });
+   }, [rows, filterSlug, matchMyLevel, learnerSkillLevel]);
 
    return (
       <AppShell>
          <header className="px-5 pb-4 pt-8">
             <h1 className="text-3xl font-black tracking-tight text-[#fffdf5] sm:text-4xl">Find your instructor</h1>
-            <p className="mt-2 text-base font-semibold text-[#e8f4df]/62 sm:text-lg">Filter by instrument</p>
+            <p className="mt-2 text-base font-semibold text-[#e8f4df]/62 sm:text-lg">Filter by instrument and, if you like, by your own skill level.</p>
          </header>
+
+         {learnerProfile?.role === "learner" && (
+            <div className="px-5 pb-2">
+               <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#e8f4df]/45">Your level</p>
+               {learnerSkillLevel ? (
+                  <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5">
+                     <Chip active={!matchMyLevel} onClick={() => setMatchMyLevel(false)}>
+                        All levels
+                     </Chip>
+                     <Chip active={matchMyLevel} onClick={() => setMatchMyLevel(true)}>
+                        Match my level ({learnerSkillLevelLabel(learnerSkillLevel)})
+                     </Chip>
+                  </div>
+               ) : (
+                  <p className="text-sm font-semibold text-[#e8f4df]/55">
+                     Set your skill level during account setup to filter instructors who teach at your level.
+                  </p>
+               )}
+            </div>
+         )}
 
          {instrumentChips.length > 1 && (
             <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-3">
+               <p className="sr-only">Instrument</p>
                {instrumentChips.map((chip) => (
                   <Chip key={chip.slug} active={filterSlug === chip.slug} onClick={() => setFilterSlug(chip.slug)}>
                      {chip.label}
@@ -115,6 +167,19 @@ function InstructorsTab() {
                                  ))}
                               </div>
 
+                              {(instructor.teachingLevels ?? []).length > 0 && (
+                                 <div className="flex flex-wrap gap-1">
+                                    {(instructor.teachingLevels ?? []).map((lvl) => (
+                                       <span
+                                          key={lvl}
+                                          className="rounded-full border border-[#fffdf5]/14 bg-[#fffdf5]/6 px-2 py-0.5 text-[10px] font-bold tracking-wide text-[#e8f4df]/75 sm:px-2.5 sm:text-[11px]"
+                                       >
+                                          {formatTeachingLevelBadge(lvl)}
+                                       </span>
+                                    ))}
+                                 </div>
+                              )}
+
                               <div className="flex flex-wrap gap-1">
                                  {(!(instructor as any).sessionType ||
                                     (instructor as any).sessionType === "solo" ||
@@ -141,7 +206,15 @@ function InstructorsTab() {
                   {filtered.length === 0 && (
                      <Card className="col-span-full border-[#fffdf5]/16 bg-[#fffdf5]/8 p-8 text-center text-base text-[#e8f4df]/62 backdrop-blur">
                         No instructors match. Try clearing filters.
-                        <Pill variant="ghost" size="sm" className="mt-4" onClick={() => setFilterSlug("all")}>
+                        <Pill
+                           variant="ghost"
+                           size="sm"
+                           className="mt-4"
+                           onClick={() => {
+                              setFilterSlug("all");
+                              setMatchMyLevel(false);
+                           }}
+                        >
                            Reset
                         </Pill>
                      </Card>

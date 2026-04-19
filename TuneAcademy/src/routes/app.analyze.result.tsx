@@ -1,22 +1,93 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { AppShell } from "@/components/tuneacademy/AppShell";
+import { Avatar } from "@/components/tuneacademy/Avatar";
 import { Card } from "@/components/tuneacademy/Card";
 import { Pill } from "@/components/tuneacademy/Pill";
 import { ScoreBar } from "@/components/tuneacademy/ScoreBar";
 import { dimensionLabels } from "@/lib/mockData";
-import { ArrowLeft, ArrowRight, Mic, MicOff, Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
+import { formatSpecialtyLabel, useInstructorsDirectory, type InstructorDirectoryRow } from "@/hooks/useInstructorsDirectory";
+import { getFirestoreDb } from "@/lib/firebase";
+import { specialtyToSlug } from "@/lib/tuneacademyFirestore";
+import { ArrowLeft, ArrowRight, Mic, MicOff, Loader2, Star } from "lucide-react";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { getFirestoreDb } from "@/lib/firebase";
 
 export const Route = createFileRoute("/app/analyze/result")({
    validateSearch: z.object({ reportId: z.string().optional() }),
    head: () => ({ meta: [{ title: "Your analysis – TuneAcademy" }] }),
    component: ResultPage,
 });
+
+function initialsFromName(name: string): string {
+   const parts = name.trim().split(/\s+/).filter(Boolean);
+   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+   if (parts.length === 1 && parts[0].length >= 2) return parts[0].slice(0, 2).toUpperCase();
+   return (parts[0]?.[0] || "?").toUpperCase();
+}
+
+function learnerSkillLevelLabel(level: "beginner" | "intermediate" | "advanced"): string {
+   if (level === "beginner") return "Beginner";
+   if (level === "intermediate") return "Intermediate";
+   return "Advanced";
+}
+
+function formatTeachingLevelBadge(slug: string): string {
+   const s = slug.trim().toLowerCase();
+   if (s === "beginner") return "Beginner";
+   if (s === "intermediate") return "Intermediate";
+   if (s === "advanced") return "Advanced";
+   return formatSpecialtyLabel(slug);
+}
+
+/**
+ * Demo-friendly matching: same instrument as this report, and/or teaches the learner's level.
+ * Ranked so instrument + level wins, then instrument-only, then level-only.
+ */
+function getSuggestedInstructors(
+   rows: InstructorDirectoryRow[],
+   reportInstrument: string,
+   learnerSkillLevel: "beginner" | "intermediate" | "advanced" | undefined,
+   max: number,
+): InstructorDirectoryRow[] {
+   const slug = specialtyToSlug(reportInstrument);
+   const noInstrument = !slug || slug === "unknown";
+
+   const scored = rows.map((row) => {
+      const hasInst =
+         !noInstrument && row.doc.specialties.some((sp) => specialtyToSlug(sp) === slug);
+      const hasLevel =
+         Boolean(learnerSkillLevel) &&
+         (row.doc.teachingLevels ?? []).some((l) => l.trim().toLowerCase() === learnerSkillLevel);
+      let tier = 0;
+      if (hasInst && hasLevel) tier = 3;
+      else if (hasInst) tier = 2;
+      else if (hasLevel) tier = 1;
+      return { row, tier };
+   });
+
+   const sorted = scored
+      .filter((x) => x.tier > 0)
+      .sort((a, b) => {
+         if (b.tier !== a.tier) return b.tier - a.tier;
+         return b.row.doc.rating - a.row.doc.rating;
+      })
+      .map((x) => x.row);
+
+   const dedup: InstructorDirectoryRow[] = [];
+   const seen = new Set<string>();
+   for (const r of sorted) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      dedup.push(r);
+      if (dedup.length >= max) break;
+   }
+   return dedup;
+}
 
 function useCount(target: number, durationMs = 900) {
    const [n, setN] = useState(0);
@@ -48,6 +119,17 @@ function ResultPage() {
    const { reportId } = Route.useSearch();
    const [report, setReport] = useState<ReportData | null>(null);
    const [loading, setLoading] = useState(true);
+   const { user, userDoc } = useAuth();
+   const { user: liveUserDoc } = useFirestoreUserDoc(user?.uid ?? null);
+   const learnerProfile = liveUserDoc ?? userDoc;
+   const learnerSkillLevel =
+      learnerProfile?.role === "learner" ? learnerProfile.skillLevel : undefined;
+   const { rows: instructorRows, loading: instructorsLoading, error: instructorsError } = useInstructorsDirectory();
+
+   const suggestedInstructors = useMemo(() => {
+      if (!report || report.status === "error") return [];
+      return getSuggestedInstructors(instructorRows, report.instrument, learnerSkillLevel, 6);
+   }, [instructorRows, report, learnerSkillLevel]);
 
    useEffect(() => {
       if (!reportId) {
@@ -154,10 +236,91 @@ function ResultPage() {
             </ConversationProvider>
          </div>
 
-         <div className="px-5 pt-4 pb-10">
-            <Link to="/app/instructors">
+         <section className="px-5 pt-8">
+            <h2 className="mb-1 text-sm font-semibold tracking-tight">Suggested instructors based on your weaknesses</h2>
+            <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
+               Instructors here teach the same instrument as this take ({report.instrument})
+               {learnerSkillLevel ? (
+                  <>
+                     {" "}
+                     or list your level ({learnerSkillLevelLabel(learnerSkillLevel)}) in their profile.
+                  </>
+               ) : (
+                  <> — add your skill level in profile setup to also match by level.</>
+               )}
+            </p>
+
+            {instructorsLoading ? (
+               <Card className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Finding instructors…
+               </Card>
+            ) : instructorsError ? (
+               <Card className="p-5 text-center text-sm text-muted-foreground">{instructorsError}</Card>
+            ) : suggestedInstructors.length === 0 ? (
+               <Card className="p-5 text-center text-sm text-muted-foreground">
+                  No directory matches for this instrument and level yet. You can still browse everyone.
+               </Card>
+            ) : (
+               <div className="grid gap-3 sm:grid-cols-2">
+                  {suggestedInstructors.map(({ id, doc: instructor }) => (
+                     <Link
+                        key={id}
+                        to="/app/instructors/$id"
+                        params={{ id }}
+                        className="block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                     >
+                        <Card className="flex gap-3 p-4 transition-colors hover:bg-muted/40">
+                           <Avatar
+                              initials={initialsFromName(instructor.fullName)}
+                              src={instructor.avatarUrl}
+                              size={52}
+                              className="shrink-0"
+                           />
+                           <div className="min-w-0 flex-1 text-left">
+                              <p className="truncate font-semibold leading-tight">{instructor.fullName}</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                 {instructor.hourlyRate === 0 ? "Free" : `$${instructor.hourlyRate}/hr`}
+                                 <span className="mx-1.5 text-muted-foreground/50">·</span>
+                                 <span className="inline-flex items-center gap-0.5">
+                                    <Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden />
+                                    {instructor.rating.toFixed(1)}
+                                 </span>
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                 {instructor.specialties.slice(0, 3).map((sp) => (
+                                    <span
+                                       key={sp}
+                                       className="rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                                    >
+                                       {formatSpecialtyLabel(sp)}
+                                    </span>
+                                 ))}
+                              </div>
+                              {(instructor.teachingLevels ?? []).length > 0 && (
+                                 <div className="mt-1.5 flex flex-wrap gap-1">
+                                    {(instructor.teachingLevels ?? []).slice(0, 3).map((lvl) => (
+                                       <span
+                                          key={lvl}
+                                          className="rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] text-muted-foreground"
+                                       >
+                                          {formatTeachingLevelBadge(lvl)}
+                                       </span>
+                                    ))}
+                                 </div>
+                              )}
+                           </div>
+                        </Card>
+                     </Link>
+                  ))}
+               </div>
+            )}
+         </section>
+
+         <div className="px-5 pt-5 pb-10">
+            <Link to="/app/instructors" className="block">
                <Pill size="lg" className="w-full">
-                  See suggested instructors
+                  Browse all instructors
                   <ArrowRight className="h-4 w-4" />
                </Pill>
             </Link>

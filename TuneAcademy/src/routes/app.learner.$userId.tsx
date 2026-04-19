@@ -7,6 +7,7 @@ import { z } from "zod";
 import { RecruitDialog } from "@/components/musireels/RecruitDialog";
 import { AppShell } from "@/components/tuneacademy/AppShell";
 import { LearnerPosterMessageDialog } from "@/components/tuneacademy/LearnerPosterMessageDialog";
+import { ProfileReceipts } from "@/components/tuneacademy/ProfileReceipts";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
@@ -265,6 +266,12 @@ function LearnerProfile() {
                   </aside>
                </div>
             </section>
+
+            {isOwn ? (
+               <div className="mt-6">
+                  <ProfileReceipts viewerUid={userId} viewerRole="learner" />
+               </div>
+            ) : null}
 
             <div className="mt-6 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
                <section className="rounded-xl border border-[#fffdf5]/15 bg-[#fffdf5]/8 p-6">

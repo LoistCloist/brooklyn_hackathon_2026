@@ -23,6 +23,7 @@ import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
 import { InstructorWeeklyAvailabilityEditor } from "@/components/tuneacademy/InstructorWeeklyAvailabilityEditor";
 import { GoogleCalendarConnectPanel } from "@/components/tuneacademy/GoogleCalendarConnectPanel";
 import { ProfileUpcomingMeetings } from "@/components/tuneacademy/ProfileUpcomingMeetings";
+import { ProfileReceipts } from "@/components/tuneacademy/ProfileReceipts";
 import { dedupeWeeklySlots, type WeeklyTimeSlot } from "@/lib/scheduling";
 import {
    LEARNER_BIO_MAX_CHARS,
@@ -641,7 +642,12 @@ function ProfileTab() {
                )}
             </motion.section>
 
-            {profile?.role === "learner" || profile?.role === "instructor" ? <ProfileUpcomingMeetings /> : null}
+            {profile?.role === "learner" || profile?.role === "instructor" ? (
+               <div className="space-y-6">
+                  <ProfileUpcomingMeetings />
+                  <ProfileReceipts />
+               </div>
+            ) : null}
 
             {!isInstructor && (
                <motion.section

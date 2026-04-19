@@ -88,6 +88,17 @@ function Onboarding() {
         else {
           if (inst?.weeklyAvailability?.length) setWeeklyAvailability(inst.weeklyAvailability);
           if (inst?.maxTutoringWeeks != null) setMaxTutoringWeeks(String(inst.maxTutoringWeeks));
+          if (inst?.teachingLevels?.length) {
+            const cap: Record<string, (typeof TEACHING_LEVELS)[number]> = {
+              beginner: "Beginner",
+              intermediate: "Intermediate",
+              advanced: "Advanced",
+            };
+            const restored = inst.teachingLevels
+              .map((slug) => cap[slug.trim().toLowerCase()])
+              .filter((x): x is (typeof TEACHING_LEVELS)[number] => Boolean(x));
+            if (restored.length) setInstructorTeachingLevels(restored);
+          }
         }
       });
     }
@@ -349,7 +360,12 @@ function Onboarding() {
                   onClick={() => setSpecs((v) => active ? v.filter((x) => x !== s) : [...v, s])}>{s}</Chip>;
               })}
             </div>
-            <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">Teaching levels *</p>
+            <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
+              Levels you want to teach <span className="text-red-400">*</span>
+            </p>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Choose every level you are open to working with. Students can match you to their own level.
+            </p>
             <div className="flex flex-wrap gap-2">
               {TEACHING_LEVELS.map((level) => {
                 const active = instructorTeachingLevels.includes(level);

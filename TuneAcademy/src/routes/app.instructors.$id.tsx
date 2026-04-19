@@ -1,5 +1,6 @@
 ﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/tuneacademy/AppShell";
+import { ProfileReceipts } from "@/components/tuneacademy/ProfileReceipts";
 import { Card } from "@/components/tuneacademy/Card";
 import { Avatar } from "@/components/tuneacademy/Avatar";
 import { Pill } from "@/components/tuneacademy/Pill";
@@ -298,6 +299,12 @@ function InstructorProfile() {
                <Card className="p-4 text-sm text-muted-foreground">No reviews yet.</Card>
             </div>
          </section>
+
+         {user?.uid === id ? (
+            <div className="px-5 pt-6">
+               <ProfileReceipts viewerUid={id} viewerRole="instructor" />
+            </div>
+         ) : null}
 
          <AnimatePresence>
             {open === "request" && (
