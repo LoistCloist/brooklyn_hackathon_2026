@@ -18,8 +18,7 @@ gcloud run deploy "${SERVICE}" \
   --allow-unauthenticated \
   --memory 2Gi \
   --cpu 2 \
-  --timeout 120 \
-  --set-env-vars "GOOGLE_APPLICATION_CREDENTIALS=/app/bc-hacks-6434f-firebase-adminsdk-fbsvc-e8e4466d4e.json"
+  --timeout 120
 
 echo ""
 echo "Service URL:"

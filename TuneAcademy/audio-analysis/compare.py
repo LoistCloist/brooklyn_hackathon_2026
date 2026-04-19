@@ -1,138 +1,190 @@
 """
-DTW-based comparison of user note events against a GuitarSet reference.
+Compare user audio against a MIDI reference using Essentia pitch contour alignment.
 
-Returns note accuracy, timing accuracy, and missed/extra note counts.
+Pipeline:
+  1. Convert MIDI NoteEvents to a frame-level pitch schedule (MIDI pitch units, one value per
+     Essentia hop).
+  2. Extract the user's pitch contour from WAV bytes using Essentia PitchYinFFT — the same
+     extractor already used for the standalone quality scores in analyze.py.
+  3. DTW-align the two voiced pitch sequences and compute accuracy metrics.
+
+No audio synthesis or Basic Pitch transcription is involved.
 """
 
-import numpy as np
+import os
+import tempfile
 from dataclasses import dataclass
+
+import numpy as np
 
 from transcribe import NoteEvent
 
-_SEMITONE_TOLERANCE = 1.0  # notes within 1 semitone count as a match
+_SR = 44100
+_FRAME_SIZE = 2048
+_HOP_SIZE = 512
+_SEMITONE_TOLERANCE = 1.0
+_CONF_THRESHOLD = 0.4
+_DOWNSAMPLE = 8  # use every Nth voiced frame to keep DTW fast for long recordings
 
 
 @dataclass
 class ComparisonResult:
-    note_accuracy: int       # 0-100: % of reference notes user hit
-    timing_accuracy: int     # 0-100: how well timing aligned
-    missed_notes: int        # reference notes user didn't play
-    extra_notes: int         # user notes not in reference
+    note_accuracy: int
+    timing_accuracy: int
+    missed_notes: int
+    extra_notes: int
     total_reference_notes: int
 
 
-def _notes_to_array(notes: list[NoteEvent]) -> np.ndarray:
-    """Convert note events to (time, pitch) array."""
-    if not notes:
-        return np.empty((0, 2), dtype=np.float32)
-    return np.array([[n.time, n.pitch] for n in notes], dtype=np.float32)
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _hz_to_midi(hz: float) -> float:
+    if hz <= 0:
+        return 0.0
+    return 12.0 * float(np.log2(hz / 440.0)) + 69.0
 
 
-def _dtw_cost(ref: np.ndarray, user: np.ndarray) -> tuple[float, list[tuple[int, int]]]:
+def _notes_to_pitch_schedule(notes: list[NoteEvent], n_frames: int) -> np.ndarray:
     """
-    Compute DTW between ref and user pitch sequences.
-    Returns (normalized_cost, warping_path).
-    Cost is based on pitch distance only — time is handled by the warping.
+    Build a frame-level pitch schedule from MIDI note events.
+    Each frame index i covers time i * _HOP_SIZE / _SR seconds.
+    Frames with no active note stay 0.0.
     """
+    schedule = np.zeros(n_frames, dtype=np.float32)
+    for note in notes:
+        start = int(note.time * _SR / _HOP_SIZE)
+        end = int((note.time + note.duration) * _SR / _HOP_SIZE)
+        schedule[max(0, start):min(n_frames, end)] = float(note.pitch)
+    return schedule
+
+
+def _extract_pitch_contour(wav_bytes: bytes) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Run Essentia PitchYinFFT on raw WAV bytes.
+    Returns (pitches_midi, confidences), one value per hop frame.
+    Unvoiced frames (conf <= threshold or hz <= 20) get pitch 0.0.
+    """
+    import essentia.standard as es
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        f.write(wav_bytes)
+        tmp = f.name
+    try:
+        audio = es.MonoLoader(filename=tmp, sampleRate=_SR)()
+    finally:
+        os.unlink(tmp)
+
+    windowing = es.Windowing(type="hann")
+    spectrum = es.Spectrum(size=_FRAME_SIZE)
+    pitch_yin = es.PitchYinFFT(frameSize=_FRAME_SIZE, sampleRate=_SR)
+
+    pitches, confs = [], []
+    for frame in es.FrameGenerator(audio, frameSize=_FRAME_SIZE, hopSize=_HOP_SIZE, startFromZero=True):
+        hz, conf = pitch_yin(spectrum(windowing(frame)))
+        pitched = conf > _CONF_THRESHOLD and hz > 20
+        pitches.append(_hz_to_midi(hz) if pitched else 0.0)
+        confs.append(float(conf))
+
+    return np.array(pitches, dtype=np.float32), np.array(confs, dtype=np.float32)
+
+
+def _dtw(ref: np.ndarray, user: np.ndarray) -> tuple[float, list[tuple[int, int]]]:
     n, m = len(ref), len(user)
-    cost_matrix = np.full((n + 1, m + 1), np.inf, dtype=np.float32)
-    cost_matrix[0, 0] = 0.0
-
-    ref_pitch = ref[:, 1]
-    user_pitch = user[:, 1]
+    cost = np.full((n + 1, m + 1), np.inf, dtype=np.float32)
+    cost[0, 0] = 0.0
 
     for i in range(1, n + 1):
         for j in range(1, m + 1):
-            pitch_dist = abs(float(ref_pitch[i - 1]) - float(user_pitch[j - 1]))
-            cost_matrix[i, j] = pitch_dist + min(
-                cost_matrix[i - 1, j],      # deletion (missed note)
-                cost_matrix[i, j - 1],      # insertion (extra note)
-                cost_matrix[i - 1, j - 1],  # match
-            )
+            d = abs(ref[i - 1] - user[j - 1])
+            cost[i, j] = d + min(cost[i - 1, j], cost[i, j - 1], cost[i - 1, j - 1])
 
-    # Trace back the warping path
-    path = []
+    path: list[tuple[int, int]] = []
     i, j = n, m
     while i > 0 and j > 0:
         path.append((i - 1, j - 1))
-        diag = cost_matrix[i - 1, j - 1]
-        left = cost_matrix[i, j - 1]
-        up = cost_matrix[i - 1, j]
+        diag, left, up = cost[i - 1, j - 1], cost[i, j - 1], cost[i - 1, j]
         best = min(diag, left, up)
         if best == diag:
-            i -= 1
-            j -= 1
+            i -= 1; j -= 1
         elif best == left:
             j -= 1
         else:
             i -= 1
-
     path.reverse()
-    normalized = float(cost_matrix[n, m]) / (n + m) if (n + m) > 0 else 0.0
+
+    normalized = float(cost[n, m]) / (n + m) if (n + m) > 0 else 0.0
     return normalized, path
 
 
-def _score_matches(
-    ref: np.ndarray,
-    user: np.ndarray,
-    path: list[tuple[int, int]],
-) -> tuple[int, int, int]:
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def compare(reference: list[NoteEvent], wav_bytes: bytes) -> ComparisonResult:
     """
-    Walk the warping path and count matched, missed, and extra notes.
-    Returns (matched_count, missed_count, extra_count).
+    Compare user WAV recording against MIDI reference note events.
+    Returns accuracy metrics using Essentia pitch extraction throughout.
     """
-    matched_ref = set()
-    matched_user = set()
-
-    for ri, ui in path:
-        pitch_dist = abs(float(ref[ri, 1]) - float(user[ui, 1]))
-        if pitch_dist <= _SEMITONE_TOLERANCE:
-            matched_ref.add(ri)
-            matched_user.add(ui)
-
-    matched = len(matched_ref)
-    missed = len(ref) - matched
-    extra = len(user) - len(matched_user)
-    return matched, missed, max(0, extra)
-
-
-def compare(
-    reference: list[NoteEvent],
-    user_notes: list[NoteEvent],
-) -> ComparisonResult:
     if not reference:
         return ComparisonResult(
             note_accuracy=0,
             timing_accuracy=0,
             missed_notes=0,
-            extra_notes=len(user_notes),
+            extra_notes=0,
             total_reference_notes=0,
         )
 
-    if not user_notes:
+    # --- Step 1: user pitch contour via Essentia ---
+    user_midi, user_confs = _extract_pitch_contour(wav_bytes)
+    n_user_frames = len(user_midi)
+
+    # --- Step 2: reference pitch schedule clipped to a reasonable window ---
+    ref_end_sec = max(n.time + n.duration for n in reference)
+    # Allow up to 1.5× the user recording length so DTW can find alignment
+    # even if user starts slightly early, but don't load the entire song.
+    clip_sec = (n_user_frames * _HOP_SIZE / _SR) * 1.5
+    n_ref_frames = int(min(ref_end_sec, clip_sec) * _SR / _HOP_SIZE) + 1
+    ref_schedule = _notes_to_pitch_schedule(reference, n_ref_frames)
+
+    # --- Step 3: keep only voiced frames, then downsample ---
+    ref_voiced_full = ref_schedule[ref_schedule > 0]
+    total_voiced = len(ref_voiced_full)
+    ref_voiced = ref_voiced_full[::_DOWNSAMPLE]
+
+    user_voiced = user_midi[user_confs > _CONF_THRESHOLD][::_DOWNSAMPLE]
+
+    if len(ref_voiced) == 0 or len(user_voiced) == 0:
         return ComparisonResult(
             note_accuracy=0,
             timing_accuracy=0,
-            missed_notes=len(reference),
-            extra_notes=0,
-            total_reference_notes=len(reference),
+            missed_notes=total_voiced,
+            extra_notes=len(user_voiced),
+            total_reference_notes=total_voiced,
         )
 
-    ref_arr = _notes_to_array(reference)
-    user_arr = _notes_to_array(user_notes)
+    # Bound reference to avoid O(n*m) blowup when ref >> user
+    ref_voiced = ref_voiced[: len(user_voiced) * 3]
 
-    normalized_cost, path = _dtw_cost(ref_arr, user_arr)
-    matched, missed, extra = _score_matches(ref_arr, user_arr, path)
+    # --- Step 4: DTW and score ---
+    normalized_cost, path = _dtw(ref_voiced, user_voiced)
 
-    note_accuracy = int(round(matched / len(reference) * 100))
+    matched_ref: set[int] = set()
+    matched_user: set[int] = set()
+    for ri, ui in path:
+        if abs(ref_voiced[ri] - user_voiced[ui]) <= _SEMITONE_TOLERANCE:
+            matched_ref.add(ri)
+            matched_user.add(ui)
 
-    # DTW cost of 0 = perfect timing, cost of 12 (one octave avg error) = 0 score
+    matched = len(matched_ref)
+    note_accuracy = int(round(matched / len(ref_voiced) * 100))
     timing_accuracy = int(max(0, min(100, (1.0 - normalized_cost / 12.0) * 100)))
 
     return ComparisonResult(
         note_accuracy=note_accuracy,
         timing_accuracy=timing_accuracy,
-        missed_notes=missed,
-        extra_notes=extra,
-        total_reference_notes=len(reference),
+        missed_notes=len(ref_voiced) - matched,
+        extra_notes=max(0, len(user_voiced) - len(matched_user)),
+        total_reference_notes=total_voiced,
     )

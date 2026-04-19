@@ -172,23 +172,20 @@ async def analyze(
 
         if reference_id:
             import reference_store
-            from transcribe import transcribe_wav
             from compare import compare
 
             try:
                 reference_notes = reference_store.get_notes(reference_id)
-                user_notes = transcribe_wav(wav_bytes)
-                comparison = compare(reference_notes, user_notes)
+                comparison = compare(reference_notes, wav_bytes)
                 result["comparison"] = {
                     "reference_id": reference_id,
-                    "note_accuracy": comparison.note_accuracy,
-                    "timing_accuracy": comparison.timing_accuracy,
-                    "missed_notes": comparison.missed_notes,
-                    "extra_notes": comparison.extra_notes,
-                    "total_reference_notes": comparison.total_reference_notes,
+                    **comparison.__dict__,
                 }
             except KeyError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except Exception as exc:
+                print(f"[analyze] comparison skipped: {exc}")
+                result["comparison_error"] = str(exc)
 
         return result
     except ValueError as exc:

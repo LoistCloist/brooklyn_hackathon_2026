@@ -72,10 +72,12 @@ export function useUploadRecording(): {
               ...(analysis.comparison ? { comparison: analysis.comparison } : {}),
             });
           } else {
-            await updateDoc(doc(db, "reports", recordingId), { status: "error" });
+            const detail = await res.text().catch(() => res.status.toString());
+            await updateDoc(doc(db, "reports", recordingId), { status: "error", error: detail });
           }
-        } catch {
-          await updateDoc(doc(db, "reports", recordingId), { status: "error" }).catch(() => null);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          await updateDoc(doc(db, "reports", recordingId), { status: "error", error: msg }).catch(() => null);
         }
 
         return recordingId;
