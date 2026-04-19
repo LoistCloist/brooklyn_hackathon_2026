@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/tuneacademy/AppShell";
 import { Card } from "@/components/tuneacademy/Card";
 import { Avatar } from "@/components/tuneacademy/Avatar";
@@ -30,7 +30,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/app/instructors/$id")({
-   head: () => ({ meta: [{ title: "Instructor — TuneAcademy" }] }),
+   head: () => ({ meta: [{ title: "Instructor â€” TuneAcademy" }] }),
    component: InstructorProfile,
 });
 
@@ -98,65 +98,6 @@ function InstructorProfile() {
       return subtractRecurringHolds(uniqueBaseSlots, holds);
    }, [i, engagements, chosenSessionType]);
 
-<<<<<<< Updated upstream
-  return (
-    <AppShell>
-      <header className="flex items-center justify-between px-5 pt-6">
-        <button
-          type="button"
-          onClick={() => nav({ to: "/app/instructors" })}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-hairline"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-      </header>
-
-      <div className="flex flex-col items-center px-5 pt-6 text-center">
-        <Avatar
-          initials={initialsFromName(i.fullName)}
-          src={i.avatarUrl}
-          size={88}
-          className="text-2xl"
-        />
-        <h1 className="mt-4 text-2xl font-bold tracking-tight">{i.fullName}</h1>
-        <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-          <Star className="h-3.5 w-3.5 fill-foreground text-foreground" />
-          <span className="tabular-nums text-foreground">{i.rating.toFixed(1)}</span>
-          <span>
-            · {i.reviewCount} reviews · {i.experienceYears} yrs
-          </span>
-        </div>
-        <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-          {i.specialties.map((s: string) => (
-            <span
-              key={s}
-              className="rounded-full border border-hairline px-2.5 py-0.5 text-[10px] uppercase tracking-widest text-muted-foreground"
-            >
-              {formatSpecialtyLabel(s)}
-            </span>
-          ))}
-          {(i.teachingLevels ?? []).map((lvl: string) => (
-            <span
-              key={lvl}
-              className="rounded-full border border-blue-400/40 bg-blue-400/10 px-2.5 py-0.5 text-[10px] uppercase tracking-widest text-blue-400"
-            >
-              {formatSpecialtyLabel(lvl)}
-            </span>
-          ))}
-        </div>
-        <p className="mt-2 text-xs font-medium">
-          {i.hourlyRate === 0 ? "Free first lesson" : `$${i.hourlyRate}/hr`}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 px-5 pt-6">
-        <Pill
-          disabled={!canRequestServices}
-          onClick={() => {
-            if (!canRequestServices) {
-              toast.error("Sign in as a learner to request services.");
-              return;
-=======
    const groupSeatSummary = useMemo(() => {
       if (!i) return { openSlots: 0, totalSeatsLeft: 0 };
       const groupSlots = dedupeWeeklySlots((i as any).groupWeeklyAvailability ?? []);
@@ -166,7 +107,6 @@ function InstructorProfile() {
             if (seatsLeft > 0) {
                summary.openSlots += 1;
                summary.totalSeatsLeft += seatsLeft;
->>>>>>> Stashed changes
             }
             return summary;
          },
@@ -202,7 +142,7 @@ function InstructorProfile() {
          return;
       }
       if (weeks < 1 || weeks > maxWeeksForInstructor) {
-         toast.error(`Choose 1–${maxWeeksForInstructor} weeks.`);
+         toast.error(`Choose 1â€“${maxWeeksForInstructor} weeks.`);
          return;
       }
       setRequestSending(true);
@@ -263,7 +203,7 @@ function InstructorProfile() {
                   <ArrowLeft className="h-4 w-4" />
                </button>
             </header>
-            <div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>
+            <div className="p-8 text-center text-sm text-muted-foreground">Loadingâ€¦</div>
          </AppShell>
       );
    }
@@ -299,9 +239,7 @@ function InstructorProfile() {
             <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
                <Star className="h-3.5 w-3.5 fill-foreground text-foreground" />
                <span className="tabular-nums text-foreground">{i.rating.toFixed(1)}</span>
-               <span>
-                  · {i.reviewCount} reviews · {i.experienceYears} yrs
-               </span>
+               <span></span>
             </div>
             <div className="mt-3 flex flex-wrap justify-center gap-1.5">
                {i.specialties.map((s: string) => (
@@ -376,7 +314,7 @@ function InstructorProfile() {
                   {sent ? (
                      <div className="py-12 text-center">
                         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-foreground">
-                           ✓
+                           âœ“
                         </div>
                         <h3 className="text-lg font-semibold">Request sent</h3>
                         <p className="mt-1 text-sm text-muted-foreground">{i.fullName} will review your proposed schedule.</p>
@@ -549,7 +487,7 @@ function InstructorProfile() {
                            value={requestMessage}
                            maxLength={TUTORING_MESSAGE_MAX}
                            onChange={(e) => setRequestMessage(e.target.value)}
-                           placeholder="Goals, repertoire, or anything they should know…"
+                           placeholder="Goals, repertoire, or anything they should knowâ€¦"
                            className="w-full resize-none rounded-xl border border-hairline bg-background p-3 text-sm outline-none focus:border-foreground"
                         />
                         <p className="mt-1 text-right text-[10px] text-muted-foreground">
@@ -560,7 +498,7 @@ function InstructorProfile() {
                            disabled={requestSending || !selectedSlots.length || offeredSlots.length === 0 || weeks < 1}
                            onClick={() => void sendServiceRequest()}
                         >
-                           {requestSending ? "Sending…" : "Send request"}
+                           {requestSending ? "Sendingâ€¦" : "Send request"}
                         </Pill>
                      </>
                   )}
@@ -580,7 +518,7 @@ function InstructorProfile() {
                      id="instructor-dm"
                      value={dmText}
                      onChange={(e) => setDmText(e.target.value.slice(0, 2000))}
-                     placeholder={`Hi ${i.fullName.split(" ")[0] ?? "there"}, I'd like to …`}
+                     placeholder={`Hi ${i.fullName.split(" ")[0] ?? "there"}, I'd like to â€¦`}
                      rows={4}
                      disabled={dmSending}
                      className="resize-none"
@@ -591,7 +529,7 @@ function InstructorProfile() {
                         Cancel
                      </Button>
                      <Button type="button" className="flex-1" disabled={dmSending || !dmText.trim()} onClick={() => void sendDm()}>
-                        {dmSending ? "Sending…" : "Send"}
+                        {dmSending ? "Sendingâ€¦" : "Send"}
                      </Button>
                   </div>
                </Sheet>

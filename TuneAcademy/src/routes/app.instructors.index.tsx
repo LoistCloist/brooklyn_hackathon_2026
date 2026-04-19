@@ -56,75 +56,6 @@ function InstructorsTab() {
             </div>
          )}
 
-<<<<<<< Updated upstream
-      <div className="grid grid-cols-2 gap-4 px-5 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {loading ? (
-          <Card className="col-span-full p-8 text-center text-base text-muted-foreground">
-            Loading instructors…
-          </Card>
-        ) : error ? (
-          <Card className="col-span-full p-8 text-center text-base text-muted-foreground">
-            {error}
-          </Card>
-        ) : (
-          <>
-            {filtered.map(({ id, doc: i }) => (
-              <Link
-                key={id}
-                to="/app/instructors/$id"
-                params={{ id }}
-                className="group block h-full min-h-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                <Card className="flex h-full min-h-70 flex-col overflow-hidden p-0 transition-all duration-200 hover:border-foreground/50 hover:shadow-lg active:scale-[0.99] sm:min-h-[19rem]">
-                  <div className="relative aspect-square w-full shrink-0 bg-gradient-to-b from-muted/40 to-muted/10">
-                    <div className="absolute inset-0 flex items-center justify-center p-1.5 sm:p-2">
-                      <Avatar
-                        initials={initialsFromName(i.fullName)}
-                        src={i.avatarUrl}
-                        size={156}
-                        className="!rounded-[2.75rem] ring-2 ring-background/80 ring-offset-2 ring-offset-transparent transition-transform duration-200 group-hover:scale-[1.02] sm:!rounded-[3.25rem]"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-3 pt-2.5">
-                    <div>
-                      <p className="line-clamp-2 text-base font-bold leading-snug tracking-tight sm:text-lg">
-                        {i.fullName}
-                      </p>
-                      <p className="mt-1 text-sm font-semibold tabular-nums text-foreground sm:text-base">
-                        {i.hourlyRate === 0 ? "Free" : `$${i.hourlyRate}/hr`}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground sm:text-sm">
-                      <Star
-                        className="h-3.5 w-3.5 shrink-0 fill-foreground text-foreground sm:h-4 sm:w-4"
-                        aria-hidden
-                      />
-                      <span className="font-semibold tabular-nums text-foreground">
-                        {i.rating.toFixed(1)}
-                      </span>
-                      <span className="text-muted-foreground">·</span>
-                      <span className="font-medium">{i.reviewCount} reviews</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-  {i.specialties.map((s) => (
-    <span
-      key={s}
-      className="rounded-full border border-hairline bg-muted/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:px-2.5 sm:text-[11px]"
-    >
-      {formatSpecialtyLabel(s)}
-    </span>
-  ))}
-  {(i.teachingLevels ?? []).map((lvl) => (
-    <span
-      key={lvl}
-      className="rounded-full border border-blue-400/30 bg-blue-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-400 sm:px-2.5 sm:text-[11px]"
-    >
-      {formatSpecialtyLabel(lvl)}
-    </span>
-  ))}
-</div>
-=======
          <div className="grid grid-cols-2 gap-4 px-5 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {loading ? (
                <Card className="col-span-full border-[#fffdf5]/16 bg-[#fffdf5]/8 p-8 text-center text-base text-[#e8f4df]/62 backdrop-blur">
@@ -155,7 +86,6 @@ function InstructorsTab() {
                                  />
                               </div>
                            </div>
->>>>>>> Stashed changes
 
                            <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-3 pt-2.5">
                               <div>
