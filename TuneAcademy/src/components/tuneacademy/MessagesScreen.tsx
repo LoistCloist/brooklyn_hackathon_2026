@@ -168,11 +168,11 @@ export function MessagesScreen({ initialChatId }: MessagesScreenProps) {
   }
 
   return (
-    <div className="mt-8 grid min-h-[min(520px,calc(100vh-12rem))] gap-4 lg:grid-cols-[minmax(0,300px)_1fr]">
+    <div className="mt-8 grid h-[calc(100dvh-17rem)] min-h-[420px] gap-4 overflow-hidden lg:grid-cols-[minmax(0,300px)_1fr]">
       {/* Conversation list */}
       <aside
         className={cn(
-          "flex min-h-0 flex-col rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/[0.04]",
+          "flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/[0.04]",
           selectedChatId ? "hidden lg:flex" : "flex",
         )}
       >
@@ -284,7 +284,7 @@ export function MessagesScreen({ initialChatId }: MessagesScreenProps) {
       {/* Thread */}
       <section
         className={cn(
-          "flex min-h-0 flex-col rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/[0.04]",
+          "flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[#fffdf5]/15 bg-[#fffdf5]/[0.04]",
           !selectedChatId ? "hidden lg:flex" : "flex",
         )}
       >

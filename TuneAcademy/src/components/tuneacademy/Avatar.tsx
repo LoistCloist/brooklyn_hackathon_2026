@@ -21,7 +21,7 @@ export function Avatar({
         )}
         style={{ width: size, height: size }}
       >
-        <img src={url} alt="" className="h-full w-full object-cover [border-radius:inherit]" />
+        <img src={url} alt="" className="h-full w-full object-cover rounded-[inherit]" />
       </div>
     );
   }
