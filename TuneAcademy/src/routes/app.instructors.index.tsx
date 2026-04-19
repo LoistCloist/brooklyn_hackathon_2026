@@ -111,15 +111,29 @@ function InstructorsTab() {
                       <span className="font-medium">{i.reviewCount} reviews</span>
                     </div>
                     <div className="flex flex-wrap gap-1">
-                      {i.specialties.map((s) => (
-                        <span
-                          key={s}
-                          className="rounded-full border border-hairline bg-muted/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:px-2.5 sm:text-[11px]"
-                        >
-                          {formatSpecialtyLabel(s)}
-                        </span>
-                      ))}
-                    </div>
+  {i.specialties.map((s) => (
+    <span
+      key={s}
+      className="rounded-full border border-hairline bg-muted/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:px-2.5 sm:text-[11px]"
+    >
+      {formatSpecialtyLabel(s)}
+    </span>
+  ))}
+</div>
+
+{/* Session type badges */}
+<div className="flex flex-wrap gap-1">
+  {(!(i as any).sessionType || (i as any).sessionType === "solo" || (i as any).sessionType === "both") && (
+    <span className="rounded-full border border-foreground/30 bg-foreground/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground sm:px-2.5 sm:text-[11px]">
+      1-on-1
+    </span>
+  )}
+  {((i as any).sessionType === "group" || (i as any).sessionType === "both") && (
+    <span className="rounded-full border border-foreground/30 bg-foreground/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground sm:px-2.5 sm:text-[11px]">
+      Group
+    </span>
+  )}
+</div>
                     <p className="line-clamp-3 flex-1 text-xs leading-relaxed text-muted-foreground sm:text-sm sm:leading-relaxed">
                       {i.bio}
                     </p>

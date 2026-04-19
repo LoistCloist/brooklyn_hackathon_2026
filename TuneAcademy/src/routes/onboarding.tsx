@@ -27,6 +27,13 @@ export const Route = createFileRoute("/onboarding")({
 const SPECIALTIES = ["Voice", "Guitar", "Piano", "Saxophone", "Violin", "Drums", "Bass", "Other"];
 const INSTRUMENTS = ["Voice", "Guitar", "Piano", "Saxophone", "Violin", "Drums", "Bass", "Other"];
 const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
+const SESSION_TYPES = [
+  { value: "solo", label: "1-on-1", description: "Private sessions only" },
+  { value: "group", label: "Group (3:1)", description: "Small group sessions only" },
+  { value: "both", label: "Both", description: "Offer both session types" },
+] as const;
+
+type SessionType = "solo" | "group" | "both";
 
 function Onboarding() {
   const nav = useNavigate();
@@ -45,9 +52,12 @@ function Onboarding() {
   const [yrs, setYrs] = useState("");
   const [nationality, setNationality] = useState("");
   const [rate, setRate] = useState("");
+  const [groupRate, setGroupRate] = useState("");
+  const [sessionType, setSessionType] = useState<SessionType | "">("");
   const [specs, setSpecs] = useState<string[]>([]);
   const [bio, setBio] = useState("");
   const [weeklyAvailability, setWeeklyAvailability] = useState<WeeklyTimeSlot[]>([]);
+  const [groupWeeklyAvailability, setGroupWeeklyAvailability] = useState<WeeklyTimeSlot[]>([]);
   const [maxTutoringWeeks, setMaxTutoringWeeks] = useState("8");
 
   // learner fields
@@ -127,11 +137,12 @@ function Onboarding() {
     const ageN = Number.parseInt(age, 10);
     const yrsN = Number.parseInt(yrs, 10);
     const hourlyRate = rate.trim() === "" ? 0 : Number.parseFloat(rate.trim());
+    const groupHourlyRate = groupRate.trim() === "" ? 0 : Number.parseFloat(groupRate.trim());
     if (!name.trim()) { toast.error("Enter your full name."); return; }
     if (!Number.isFinite(ageN) || ageN < 13) { toast.error("Enter a valid age."); return; }
     if (!Number.isFinite(yrsN) || yrsN < 0) { toast.error("Enter years of experience."); return; }
     if (!nationality.trim()) { toast.error("Choose your nationality."); return; }
-    if (!Number.isFinite(hourlyRate) || hourlyRate < 0) { toast.error("Enter a valid hourly rate."); return; }
+    if (!sessionType) { toast.error("Select your session type."); return; }
     if (specs.length === 0) { toast.error("Pick at least one specialty."); return; }
     if (!bio.trim()) { toast.error("Add a short bio."); return; }
     if (weeklyAvailability.length === 0) { toast.error("Choose at least one available hour."); return; }
@@ -149,7 +160,12 @@ function Onboarding() {
         fullName: name.trim(), avatarUrl, age: ageN, experienceYears: yrsN,
         nationality: nationality.trim(), specialties: specs.map(specialtyToSlug),
         bio: bio.trim(), hourlyRate,
+        groupHourlyRate: (sessionType === "group" || sessionType === "both") ? groupHourlyRate : 0,
+        sessionType: sessionType as SessionType,
         weeklyAvailability: dedupeWeeklySlots(weeklyAvailability),
+        groupWeeklyAvailability: (sessionType === "group" || sessionType === "both")
+          ? dedupeWeeklySlots(groupWeeklyAvailability)
+          : [],
         maxTutoringWeeks: maxW,
       });
       await refreshUserDoc();
@@ -176,6 +192,7 @@ function Onboarding() {
         if (!Number.isFinite(yrsN) || yrsN < 0) { toast.error("Enter years of experience."); return; }
         if (!nationality.trim()) { toast.error("Choose your nationality."); return; }
         if (!Number.isFinite(hourlyRate) || hourlyRate < 0) { toast.error("Enter a valid rate."); return; }
+        if (!sessionType) { toast.error("Select your session type."); return; }
         if (specs.length === 0) { toast.error("Pick at least one specialty."); return; }
         setStep(2); return;
       }
@@ -195,13 +212,9 @@ function Onboarding() {
       {/* Progress dots */}
       <div className="flex items-center justify-center gap-2">
         {Array.from({ length: totalSteps }).map((_, i) => (
-          <div
-            key={i}
-            className={
-              "h-1.5 w-8 rounded-full transition-colors sm:w-10 " +
-              (i <= step ? "bg-foreground" : "bg-accent")
-            }
-          />
+          <div key={i}
+            className={"h-1.5 w-8 rounded-full transition-colors sm:w-10 " +
+              (i <= step ? "bg-foreground" : "bg-accent")} />
         ))}
       </div>
 
@@ -233,7 +246,6 @@ function Onboarding() {
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Your music journey</h2>
             <p className="mt-1 text-sm text-muted-foreground">Help us personalise your experience.</p>
-
             <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
               Skill level <span className="text-red-400">*</span>
             </p>
@@ -248,7 +260,6 @@ function Onboarding() {
                 );
               })}
             </div>
-
             <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
               Instruments <span className="text-red-400">*</span>
             </p>
@@ -263,14 +274,13 @@ function Onboarding() {
                 );
               })}
             </div>
-
             <p className="mt-6 text-xs text-muted-foreground">
               You can update these anytime from your profile.
             </p>
           </div>
         )}
 
-        {/* ── INSTRUCTOR STEPS (unchanged) ── */}
+        {/* ── INSTRUCTOR STEP 1: Details + Session Type ── */}
         {step === 1 && !isLearner && (
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Your details</h2>
@@ -288,6 +298,44 @@ function Onboarding() {
               <option value="">Select nationality… *</option>
               {NATIONALITY_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
+
+            {/* Session Type */}
+            <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
+              Session type <span className="text-red-400">*</span>
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {SESSION_TYPES.map(({ value, label, description }) => {
+                const active = sessionType === value;
+                return (
+                  <button key={value} type="button" onClick={() => setSessionType(value)}
+                    className={`flex flex-col items-center rounded-xl border p-3 text-center transition-all ${
+                      active
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-hairline bg-surface text-foreground hover:border-foreground"
+                    }`}>
+                    <span className="text-sm font-semibold">{label}</span>
+                    <span className={`mt-1 text-[10px] ${active ? "text-background/70" : "text-muted-foreground"}`}>
+                      {description}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 1-on-1 rate */}
+            {(sessionType === "solo" || sessionType === "both") && (
+              <input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal"
+                placeholder="1-on-1 hourly rate ($) — leave blank if free"
+                className="mt-4 h-12 w-full rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground" />
+            )}
+
+            {/* Group rate */}
+            {(sessionType === "group" || sessionType === "both") && (
+              <input value={groupRate} onChange={(e) => setGroupRate(e.target.value)} inputMode="decimal"
+                placeholder="Group session rate per person ($)"
+                className="mt-3 h-12 w-full rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground" />
+            )}
+
             <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">Specialties *</p>
             <div className="flex flex-wrap gap-2">
               {SPECIALTIES.map((s) => {
@@ -296,19 +344,41 @@ function Onboarding() {
                   onClick={() => setSpecs((v) => active ? v.filter((x) => x !== s) : [...v, s])}>{s}</Chip>;
               })}
             </div>
-            <input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal"
-              placeholder="Hourly rate ($) — leave blank if free"
-              className="mt-6 h-12 w-full rounded-xl border border-hairline bg-surface px-4 text-sm outline-none focus:border-foreground" />
           </div>
         )}
 
+        {/* ── INSTRUCTOR STEP 2: Availability ── */}
         {step === 2 && !isLearner && (
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Weekly availability</h2>
             <p className="mt-1 text-sm text-muted-foreground">Learners only see these hours when they request tutoring.</p>
-            <div className="mt-6 max-h-[52vh] overflow-y-auto rounded-xl border border-hairline bg-surface/60 p-4">
-              <InstructorWeeklyAvailabilityEditor value={weeklyAvailability} onChange={setWeeklyAvailability} />
-            </div>
+
+            {/* 1-on-1 availability */}
+            {(sessionType === "solo" || sessionType === "both") && (
+              <>
+                {sessionType === "both" && (
+                  <p className="mt-4 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
+                    1-on-1 availability
+                  </p>
+                )}
+                <div className="mt-2 max-h-[30vh] overflow-y-auto rounded-xl border border-hairline bg-surface/60 p-4">
+                  <InstructorWeeklyAvailabilityEditor value={weeklyAvailability} onChange={setWeeklyAvailability} />
+                </div>
+              </>
+            )}
+
+            {/* Group availability */}
+            {(sessionType === "group" || sessionType === "both") && (
+              <>
+                <p className="mt-4 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
+                  Group session availability
+                </p>
+                <div className="mt-2 max-h-[30vh] overflow-y-auto rounded-xl border border-hairline bg-surface/60 p-4">
+                  <InstructorWeeklyAvailabilityEditor value={groupWeeklyAvailability} onChange={setGroupWeeklyAvailability} />
+                </div>
+              </>
+            )}
+
             <label htmlFor="max-weeks" className="mt-6 mb-2 block text-[11px] uppercase tracking-widest text-muted-foreground">
               Maximum weeks per tutoring request
             </label>
@@ -318,6 +388,7 @@ function Onboarding() {
           </div>
         )}
 
+        {/* ── INSTRUCTOR STEP 3: Bio ── */}
         {step === 3 && !isLearner && (
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Short bio</h2>
