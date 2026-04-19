@@ -50,7 +50,15 @@ export interface AnalysisReport {
   instrument: string;
   challenge: string;
   status: "pending" | "done" | "error";
+  overallScore?: number;
   overall_score?: number;
+  dimensionScores?: {
+    pitch_centre: number;
+    pitch_stability: number;
+    rhythm: number;
+    tone_quality: number;
+    note_attack: number;
+  };
   dimension_scores?: {
     pitch_centre: number;
     pitch_stability: number;
@@ -59,6 +67,15 @@ export interface AnalysisReport {
     note_attack: number;
   };
   weaknesses?: string[];
+  comparison?: {
+    reference_id?: string;
+    note_accuracy?: number;
+    timing_accuracy?: number;
+    missed_notes?: number;
+    extra_notes?: number;
+    total_reference_notes?: number;
+  };
+  comparison_error?: string;
   error?: string;
   createdAt: Timestamp;
   analyzedAt?: Timestamp;

@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_APP_ID: string;
   readonly VITE_FIREBASE_MEASUREMENT_ID?: string;
   readonly VITE_BYPASS_AUTH?: string;
+  readonly VITE_ELEVENLABS_AGENT_ID?: string;
 }
 
 interface ImportMeta {
