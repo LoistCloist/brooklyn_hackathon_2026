@@ -177,6 +177,7 @@ function LessonPicker({
 // ── Main component ────────────────────────────────────────────────────────────
 
 function AnalyzeTab() {
+  const navigate = useNavigate();
   const [step, setStep] = useState<Step>("pick-instrument");
   const [picked, setPicked] = useState<ChallengeKey | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<TrackInfo | null>(null);
@@ -302,7 +303,7 @@ function AnalyzeTab() {
         name: name.trim() || `${c.instrument} take`,
         referenceId: selectedTrack?.track_id,
       });
-      setUploadedReportId(reportId);
+      void navigate({ to: "/app/analyze/result", search: { reportId } });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed.");
     }
