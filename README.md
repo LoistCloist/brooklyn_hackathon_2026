@@ -57,4 +57,18 @@ VITE_FIREBASE_APP_ID=1:1234567890:web:abcdef
 
 Do not commit real `.env` files; keep secrets out of git.
 
+### Hackathon leakage-prevention demo
+
+TuneAcademy demonstrates link-leakage prevention in the frontend so judges can see the intended product behavior without requiring production-grade backend enforcement.
+
+- Google Meet URLs are treated as protected room details, not user-facing links.
+- The session page hides the raw Meet URL and removes copy-link sharing.
+- The join button unlocks 10 minutes before the scheduled lesson and closes after the lesson ends.
+- Users join through TuneAcademy first, which records attendance before opening the Meet room.
+- A visible "Leakage Shield" panel explains that links are hidden, copy sharing is removed, and budget is charged after both sides join.
+- In-app messages block obvious emails, phone numbers, outside URLs, Google Meet links, Zoom/WhatsApp/Discord mentions, and common payment handles.
+- Student-facing tutoring cards replace direct email exposure with protected-profile language.
+
+For production, the next step would be moving enforcement into trusted backend code: stricter Firestore rules, backend-created Meet spaces, backend moderation, payment enforcement, and Google Meet event verification where available.
+
 repo bot test.

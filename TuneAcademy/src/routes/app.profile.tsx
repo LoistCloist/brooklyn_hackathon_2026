@@ -364,7 +364,7 @@ function ProfileTab() {
 
    return (
       <AppShell>
-         <header className="pt-8">
+         <header className="mx-auto max-w-5xl pt-8">
             <div className="flex items-center justify-between">
                <div>
                   <p className={`text-xs font-black uppercase tracking-[0.22em] ${brandTheme.teal}`}>TuneAcademy</p>
@@ -395,7 +395,7 @@ function ProfileTab() {
             </div>
          </header>
 
-         <main className="mt-8 space-y-5 pb-28">
+         <main className="mx-auto mt-8 max-w-5xl space-y-5 pb-28">
             <motion.section
                className="rounded-xl border border-[#fffdf5]/20 bg-[#fffdf5]/8 p-6 backdrop-blur"
                initial={{ opacity: 0, y: 16 }}

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { ensureInstructorLearnerThread } from "@/hooks/useMessaging";
+import { findLeakageIssue, leakageGuardMessage } from "@/lib/leakageGuard";
 
 type Props = {
    open: boolean;
@@ -28,6 +29,7 @@ export function InstructorLearnerMessageDialog({
    const nav = useNavigate();
    const [message, setMessage] = useState("");
    const [posting, setPosting] = useState(false);
+   const leakageIssue = findLeakageIssue(message);
 
    useEffect(() => {
       if (open) {
@@ -38,6 +40,11 @@ export function InstructorLearnerMessageDialog({
    const send = async () => {
       const text = message.trim();
       if (!text) return;
+      const issue = findLeakageIssue(text);
+      if (issue) {
+         toast.error(`${issue} ${leakageGuardMessage}`);
+         return;
+      }
       setPosting(true);
       try {
          const chatId = await ensureInstructorLearnerThread({ instructorId, instructorName, learnerId, learnerName, message: text });
@@ -69,6 +76,15 @@ export function InstructorLearnerMessageDialog({
                      className="min-h-30"
                      disabled={posting}
                   />
+                  {leakageIssue ? (
+                     <p className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                        {leakageIssue} {leakageGuardMessage}
+                     </p>
+                  ) : (
+                     <p className="mt-2 text-xs text-muted-foreground">
+                        Contact details and outside payment links stay inside TuneAcademy.
+                     </p>
+                  )}
                   <p className="mt-1 text-right text-xs text-muted-foreground">{message.length} / 500</p>
                </div>
             </div>
@@ -77,7 +93,7 @@ export function InstructorLearnerMessageDialog({
                <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={posting}>
                   Cancel
                </Button>
-               <Button type="button" onClick={() => void send()} disabled={posting || !message.trim()}>
+               <Button type="button" onClick={() => void send()} disabled={posting || !message.trim() || Boolean(leakageIssue)}>
                   {posting ? "Sending…" : "Send"}
                </Button>
             </DialogFooter>

@@ -38,7 +38,7 @@ export function AppShell({ children, padBottom = true }: { children: ReactNode; 
                </motion.span>
             ))}
          </div>
-         <div className={"relative mx-auto w-full max-w-7xl px-6 pt-24 lg:px-10 " + (padBottom ? "pb-12" : "")}>{children}</div>
+         <div className={"relative mx-auto w-full max-w-7xl px-6 pt-18 lg:px-10 " + (padBottom ? "pb-12" : "")}>{children}</div>
       </div>
    );
 }
