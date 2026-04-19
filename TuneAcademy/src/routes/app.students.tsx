@@ -52,12 +52,12 @@ function StudentsTab() {
                <p className={`text-xs font-black uppercase tracking-[0.22em] ${brandTheme.gold}`}>Instructor workspace</p>
                <h1 className="mt-2 text-2xl font-black tracking-tight text-[#fffdf5] md:text-3xl">{title}</h1>
             </div>
-            <div className="flex w-full max-w-[34rem] flex-wrap gap-1 rounded-2xl border border-[#fffdf5]/14 bg-[#0b1510]/55 p-1 shadow-inner lg:w-[34rem]">
+            <div className="flex w-full max-w-136 flex-wrap gap-1 rounded-2xl border border-[#fffdf5]/14 bg-[#0b1510]/55 p-1 shadow-inner lg:w-136">
                <Link
                   to="/app/students"
                   search={{ tab: "explore" }}
                   className={cn(
-                     "inline-flex min-w-0 basis-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.08em] transition sm:gap-2 sm:text-[10px] sm:tracking-[0.1em]",
+                     "inline-flex min-w-0 basis-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.08em] transition sm:gap-2 sm:text-[10px] sm:tracking-widest",
                      tab === "explore" ? "bg-[#ffd666] text-[#11140c] shadow-sm" : "text-[#e8f4df]/55 hover:text-[#fffdf5]",
                   )}
                >
@@ -68,7 +68,7 @@ function StudentsTab() {
                   to="/app/students"
                   search={{ tab: "mine" }}
                   className={cn(
-                     "inline-flex min-w-0 basis-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.08em] transition sm:gap-2 sm:text-[10px] sm:tracking-[0.1em]",
+                     "inline-flex min-w-0 basis-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.08em] transition sm:gap-2 sm:text-[10px] sm:tracking-widest",
                      tab === "mine" ? "bg-[#ffd666] text-[#11140c] shadow-sm" : "text-[#e8f4df]/55 hover:text-[#fffdf5]",
                   )}
                >
@@ -79,7 +79,7 @@ function StudentsTab() {
                   to="/app/students"
                   search={{ tab: "pending" }}
                   className={cn(
-                     "inline-flex min-w-0 basis-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.08em] transition sm:gap-2 sm:text-[10px] sm:tracking-[0.1em]",
+                     "inline-flex min-w-0 basis-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.08em] transition sm:gap-2 sm:text-[10px] sm:tracking-widest",
                      tab === "pending" ? "bg-[#ffd666] text-[#11140c] shadow-sm" : "text-[#e8f4df]/55 hover:text-[#fffdf5]",
                   )}
                >
