@@ -6,7 +6,7 @@ import { getFirebaseAuth, getFirestoreDb, getFirebaseStorage } from "@/lib/fireb
 const ANALYZE_URL = "https://musilearn-api-966115096812.us-east1.run.app/analyze";
 
 export function useUploadRecording(): {
-  uploadRecording: (args: { wavBlob: Blob; instrument: string; challenge: string }) => Promise<string>;
+  uploadRecording: (args: { wavBlob: Blob; instrument: string; challenge: string; name?: string; referenceId?: string }) => Promise<string>;
   progress: number;
   uploading: boolean;
   error: string | null;

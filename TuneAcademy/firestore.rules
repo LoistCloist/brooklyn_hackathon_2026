@@ -134,6 +134,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /lakh_tracks/{trackId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     match /tutoringEngagements/{engagementId} {
       allow read, create, update, delete: if request.auth != null;
 

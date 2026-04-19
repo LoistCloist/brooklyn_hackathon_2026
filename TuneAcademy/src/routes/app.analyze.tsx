@@ -5,7 +5,7 @@ import { Pill } from "@/components/tuneacademy/Pill";
 import { InstrumentIcon } from "@/components/tuneacademy/InstrumentIcon";
 import { challenges } from "@/lib/mockData";
 import { useUploadRecording } from "@/hooks/useUploadRecording";
-import { Mic, Square, Loader2, ChevronLeft, Music2 } from "lucide-react";
+import { Mic, Square, Loader2, ChevronLeft, Music2, ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -19,7 +19,7 @@ export const Route = createFileRoute("/app/analyze")({
 });
 
 type ChallengeKey = keyof typeof challenges;
-type Step = "pick-instrument" | "pick-lesson" | "record";
+type Step = "pick-instrument" | "record";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -29,6 +29,15 @@ interface TrackInfo {
   tempo: number;
   key: string;
   style: string;
+}
+
+interface SongInfo {
+  track_id: string;
+  title: string;
+  artist: string;
+  tempo_bpm: number;
+  duration_seconds: number;
+  instrument: string;
 }
 
 // ── WAV encoding ──────────────────────────────────────────────────────────────
@@ -62,115 +71,193 @@ function encodeWav(samples: Float32Array, sampleRate: number): Blob {
   return new Blob([buf], { type: "audio/wav" });
 }
 
-// ── Lesson picker ─────────────────────────────────────────────────────────────
+// ── Inline MIDI section ───────────────────────────────────────────────────────
 
-function LessonPicker({
-  onPick,
-  onSkip,
-  onBack,
+function MidiSection({
+  isGuitar,
+  selectedTrack,
+  selectedSong,
+  onPickTrack,
+  onPickSong,
+  onClear,
 }: {
-  onPick: (track: TrackInfo) => void;
-  onSkip: () => void;
-  onBack: () => void;
+  isGuitar: boolean;
+  selectedTrack: TrackInfo | null;
+  selectedSong: SongInfo | null;
+  onPickTrack: (track: TrackInfo) => void;
+  onPickSong: (song: SongInfo) => void;
+  onClear: () => void;
 }) {
   const [tracks, setTracks] = useState<TrackInfo[]>([]);
+  const [songs, setSongs] = useState<SongInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [styleFilter, setStyleFilter] = useState<"all" | "solo" | "comp">("all");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
-    getDocs(collection(getFirestoreDb(), "guitarset_tracks"))
-      .then((snap) =>
-        setTracks(
-          snap.docs.map((d) => ({ track_id: d.id, ...(d.data() as Omit<TrackInfo, "track_id">) }))
-        )
-      )
-      .catch(() => setTracks([]))
+    const col = isGuitar ? "guitarset_tracks" : "lakh_tracks";
+    getDocs(collection(getFirestoreDb(), col))
+      .then((snap) => {
+        if (isGuitar) {
+          setTracks(snap.docs.map((d) => ({ track_id: d.id, ...(d.data() as Omit<TrackInfo, "track_id">) })));
+        } else {
+          setSongs(snap.docs.map((d) => ({ track_id: d.id, ...(d.data() as Omit<SongInfo, "track_id">) })));
+        }
+      })
+      .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [isGuitar]);
 
-  const filtered = tracks.filter(
-    (t) => styleFilter === "all" || t.style === styleFilter,
-  );
+  function fmtDuration(secs: number) {
+    const m = Math.floor(secs / 60);
+    const s = Math.round(secs % 60);
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  const filteredTracks = tracks.filter((t) => styleFilter === "all" || t.style === styleFilter);
+  const filteredSongs = songs.filter((s) => {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    return s.title?.toLowerCase().includes(q) || s.artist?.toLowerCase().includes(q);
+  });
+
+  const hasSelection = selectedTrack !== null || selectedSong !== null;
+  const selectionLabel = selectedTrack
+    ? `${selectedTrack.progression} — ${selectedTrack.key}`
+    : selectedSong
+    ? selectedSong.title ?? selectedSong.track_id
+    : null;
+  const selectionSub = selectedTrack
+    ? `${selectedTrack.style} · ${selectedTrack.tempo} BPM`
+    : selectedSong
+    ? `${selectedSong.artist ?? ""}${selectedSong.tempo_bpm ? ` · ${selectedSong.tempo_bpm} BPM` : ""}`
+    : null;
 
   return (
-    <AppShell>
-      <header className="flex items-center gap-3 px-5 pt-8 pb-2">
-        <button onClick={onBack} className="text-muted-foreground">
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pick a lesson</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Choose a GuitarSet track to play along with.
-          </p>
+    <div className="space-y-3">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between"
+      >
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          MIDI Reference <span className="normal-case">(optional)</span>
+        </p>
+        {expanded ? (
+          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        )}
+      </button>
+
+      {hasSelection && !expanded && (
+        <Card className="flex items-center justify-between px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold">{selectionLabel}</p>
+            {selectionSub && <p className="mt-0.5 text-xs text-muted-foreground capitalize">{selectionSub}</p>}
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onClear(); }}
+            className="text-xs text-muted-foreground underline underline-offset-4"
+          >
+            Clear
+          </button>
+        </Card>
+      )}
+
+      {expanded && (
+        <div className="space-y-3">
+          {isGuitar ? (
+            <div className="flex gap-2">
+              {(["all", "solo", "comp"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setStyleFilter(f)}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize transition-colors ${
+                    styleFilter === f
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-hairline text-muted-foreground"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by title or artist…"
+              className="w-full rounded-lg border border-hairline bg-transparent px-4 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/30"
+            />
+          )}
+
+          {loading && (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {!loading && (isGuitar ? filteredTracks.length === 0 : filteredSongs.length === 0) && (
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
+              <Music2 className="h-7 w-7 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">
+                {!isGuitar && query ? "No songs match your search." : "No MIDI tracks loaded yet."}
+              </p>
+            </div>
+          )}
+
+          {isGuitar
+            ? filteredTracks.map((track) => (
+                <button
+                  key={track.track_id}
+                  onClick={() => { onPickTrack(track); setExpanded(false); }}
+                  className="w-full text-left"
+                >
+                  <Card
+                    className={`flex items-center justify-between px-4 py-3 transition-colors hover:border-foreground/40 ${
+                      selectedTrack?.track_id === track.track_id ? "border-foreground" : ""
+                    }`}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {track.progression} — {track.key}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground capitalize">
+                        {track.style} · {track.tempo} BPM
+                      </p>
+                    </div>
+                    <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+                  </Card>
+                </button>
+              ))
+            : filteredSongs.map((song) => (
+                <button
+                  key={song.track_id}
+                  onClick={() => { onPickSong(song); setExpanded(false); }}
+                  className="w-full text-left"
+                >
+                  <Card
+                    className={`flex items-center justify-between px-4 py-3 transition-colors hover:border-foreground/40 ${
+                      selectedSong?.track_id === song.track_id ? "border-foreground" : ""
+                    }`}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">{song.title ?? song.track_id}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {song.artist ?? "Unknown artist"}
+                        {song.tempo_bpm ? ` · ${song.tempo_bpm} BPM` : ""}
+                        {song.duration_seconds ? ` · ${fmtDuration(song.duration_seconds)}` : ""}
+                      </p>
+                    </div>
+                    <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+                  </Card>
+                </button>
+              ))}
         </div>
-      </header>
-
-      {/* Style filter */}
-      <div className="flex gap-2 px-5 pt-3">
-        {(["all", "solo", "comp"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setStyleFilter(f)}
-            className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize transition-colors ${
-              styleFilter === f
-                ? "border-foreground bg-foreground text-background"
-                : "border-hairline text-muted-foreground"
-            }`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-
-      <div className="px-5 pt-4 pb-6 space-y-3">
-        {loading && (
-          <div className="flex justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        )}
-
-        {!loading && filtered.length === 0 && (
-          <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <Music2 className="h-8 w-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">
-              No lessons loaded yet.
-              <br />
-              Upload GuitarSet annotations to get started.
-            </p>
-          </div>
-        )}
-
-        {filtered.map((track) => (
-          <button
-            key={track.track_id}
-            onClick={() => onPick(track)}
-            className="w-full text-left"
-          >
-            <Card className="flex items-center justify-between px-4 py-3 transition-colors hover:border-foreground/40">
-              <div>
-                <p className="text-sm font-semibold">
-                  {track.progression} — {track.key}
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground capitalize">
-                  {track.style} · {track.tempo} BPM
-                </p>
-              </div>
-              <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
-            </Card>
-          </button>
-        ))}
-
-        {!loading && (
-          <button
-            onClick={onSkip}
-            className="mt-2 w-full text-center text-xs text-muted-foreground underline underline-offset-4"
-          >
-            Skip — just record without a lesson
-          </button>
-        )}
-      </div>
-    </AppShell>
+      )}
+    </div>
   );
 }
 
@@ -181,12 +268,12 @@ function AnalyzeTab() {
   const [step, setStep] = useState<Step>("pick-instrument");
   const [picked, setPicked] = useState<ChallengeKey | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<TrackInfo | null>(null);
+  const [selectedSong, setSelectedSong] = useState<SongInfo | null>(null);
   const [recording, setRecording] = useState(false);
   const [wavBlob, setWavBlob] = useState<Blob | null>(null);
   const [wavUrl, setWavUrl] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [micError, setMicError] = useState<string | null>(null);
-  const [uploadedReportId, setUploadedReportId] = useState<string | null>(null);
   const [name, setName] = useState("");
 
   const timerRef = useRef<number | null>(null);
@@ -214,23 +301,18 @@ function AnalyzeTab() {
     };
   }, []);
 
-  function handlePickInstrument(k: ChallengeKey) {
-    setPicked(k);
-    if (challenges[k].instrument === "Guitar") {
-      setStep("pick-lesson");
-    } else {
-      setStep("record");
-    }
-  }
-
-  function handlePickLesson(track: TrackInfo) {
-    setSelectedTrack(track);
-    setStep("record");
-  }
-
-  function handleSkipLesson() {
+  function reset() {
+    setPicked(null);
     setSelectedTrack(null);
-    setStep("record");
+    setSelectedSong(null);
+    setStep("pick-instrument");
+    if (wavUrlRef.current) { URL.revokeObjectURL(wavUrlRef.current); wavUrlRef.current = null; }
+    setWavBlob(null);
+    setWavUrl(null);
+    setRecording(false);
+    setSeconds(0);
+    setMicError(null);
+    setName("");
   }
 
   async function startRecording() {
@@ -299,9 +381,11 @@ function AnalyzeTab() {
         instrument: c.instrument,
         challenge: selectedTrack
           ? `${selectedTrack.progression} — ${selectedTrack.key} (${selectedTrack.style}, ${selectedTrack.tempo} BPM)`
-          : c.text,
+          : selectedSong
+          ? `${selectedSong.title} — ${selectedSong.artist}`
+          : c.instrument,
         name: name.trim() || `${c.instrument} take`,
-        referenceId: selectedTrack?.track_id,
+        referenceId: selectedTrack?.track_id ?? selectedSong?.track_id,
       });
       void navigate({ to: "/app/analyze/result", search: { reportId } });
     } catch (err) {
@@ -309,106 +393,59 @@ function AnalyzeTab() {
     }
   }
 
-  function reset() {
-    setPicked(null);
-    setSelectedTrack(null);
-    setStep("pick-instrument");
-    if (wavUrlRef.current) { URL.revokeObjectURL(wavUrlRef.current); wavUrlRef.current = null; }
-    setWavBlob(null);
-    setWavUrl(null);
-    setRecording(false);
-    setSeconds(0);
-    setMicError(null);
-    setUploadedReportId(null);
-    setName("");
-  }
-
-  if (uploadedReportId) {
-    return <AnalysisPlaceholder onReset={reset} />;
-  }
-
-  if (step === "pick-lesson") {
+  // ── Pick instrument ──────────────────────────────────────────────────────────
+  if (step === "pick-instrument") {
     return (
-      <LessonPicker
-        onPick={handlePickLesson}
-        onSkip={handleSkipLesson}
-        onBack={() => { setPicked(null); setStep("pick-instrument"); }}
-      />
-    );
-  }
-
-  return (
-    <AppShell>
-      <header className="px-5 pt-8 pb-2">
-        <h1 className="text-2xl font-bold tracking-tight">Submit a recording</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {step === "pick-instrument" ? "Choose your instrument." : "Follow the challenge below."}
-        </p>
-      </header>
-
-      {step === "pick-instrument" && (
+      <AppShell>
+        <header className="px-5 pt-8 pb-2">
+          <h1 className="text-2xl font-bold tracking-tight">What did you play?</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Choose your instrument to get started.</p>
+        </header>
         <div className="grid grid-cols-2 gap-3 px-5 pt-4">
           {(Object.keys(challenges) as ChallengeKey[]).map((k) => {
             const c = challenges[k];
             return (
-              <button key={k} onClick={() => handlePickInstrument(k)} className="text-left">
+              <button
+                key={k}
+                onClick={() => { setPicked(k); setStep("record"); }}
+                className="text-left"
+              >
                 <Card className="flex h-44 flex-col justify-between p-4 transition-colors hover:border-foreground/40">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full border border-hairline">
                     <InstrumentIcon instrument={c.instrument} className="h-5 w-5" />
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold">Solo {c.instrument}</p>
-                    <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{c.text}</p>
-                  </div>
+                  <p className="text-sm font-semibold">{c.instrument}</p>
                 </Card>
               </button>
             );
           })}
         </div>
-      )}
+      </AppShell>
+    );
+  }
 
-      {step === "record" && picked && (
-        <div className="px-5 pt-4">
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Name this recording…"
-            maxLength={60}
-            className="mb-4 w-full rounded-lg border border-hairline bg-transparent px-4 py-3 text-sm font-semibold placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/30"
-          />
-          <Card className="p-5">
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-              {selectedTrack ? "Lesson" : "Challenge"}
-            </p>
-            {selectedTrack ? (
-              <>
-                <p className="mt-2 text-lg font-semibold leading-snug">
-                  {selectedTrack.progression} — {selectedTrack.key}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground capitalize">
-                  {selectedTrack.style} · {selectedTrack.tempo} BPM
-                </p>
-              </>
-            ) : (
-              <p className="mt-2 text-lg font-semibold leading-snug">{challenges[picked].text}</p>
-            )}
-            <button
-              onClick={() => {
-                if (challenges[picked].instrument === "Guitar") {
-                  setStep("pick-lesson");
-                } else {
-                  setPicked(null);
-                  setStep("pick-instrument");
-                }
-              }}
-              className="mt-3 text-xs text-muted-foreground underline underline-offset-4"
-            >
-              {selectedTrack ? "Change lesson" : "Change instrument"}
-            </button>
-          </Card>
+  // ── Record + MIDI + Name ─────────────────────────────────────────────────────
+  if (step === "record" && picked) {
+    const c = challenges[picked];
+    const isGuitar = c.instrument === "Guitar";
 
-          <div className="mt-10 flex flex-col items-center">
+    return (
+      <AppShell>
+        <header className="flex items-center gap-3 px-5 pt-8 pb-2">
+          <button onClick={reset} className="text-muted-foreground">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-hairline">
+              <InstrumentIcon instrument={c.instrument} className="h-4 w-4" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight">{c.instrument}</h1>
+          </div>
+        </header>
+
+        <div className="px-5 pt-6 pb-10 space-y-8">
+          {/* Recording controls */}
+          <div className="flex flex-col items-center">
             <Waveform active={recording} />
             <p className="mt-4 text-3xl font-bold tabular-nums">
               {String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}
@@ -423,9 +460,8 @@ function AnalyzeTab() {
 
             <button
               onClick={toggle}
-              disabled={uploading}
               aria-label={recording ? "Stop" : "Record"}
-              className="relative mt-8 flex h-24 w-24 items-center justify-center rounded-full bg-foreground text-background shadow-elevated transition-transform active:scale-95 disabled:opacity-50"
+              className="relative mt-8 flex h-24 w-24 items-center justify-center rounded-full bg-foreground text-background shadow-elevated transition-transform active:scale-95"
             >
               {recording && (
                 <motion.div
@@ -438,62 +474,64 @@ function AnalyzeTab() {
             </button>
 
             {wavUrl && !recording && (
-              <div className="mt-8 w-full space-y-3">
-                <p className="text-center text-xs uppercase tracking-widest text-muted-foreground">
-                  Listen back
-                </p>
+              <div className="mt-6 w-full space-y-2">
+                <p className="text-center text-xs uppercase tracking-widest text-muted-foreground">Listen back</p>
                 <audio src={wavUrl} controls className="w-full rounded-lg" />
-
-                {uploading ? (
-                  <div className="space-y-2">
-                    <Progress value={Math.round(progress * 100)} />
-                    <p className="text-center text-xs text-muted-foreground">Uploading…</p>
-                  </div>
-                ) : (
-                  <Pill size="lg" className="w-full" onClick={() => void submit()}>
-                    Submit recording
-                  </Pill>
-                )}
+                <button
+                  onClick={toggle}
+                  className="w-full text-center text-xs text-muted-foreground underline underline-offset-4"
+                >
+                  Re-record
+                </button>
               </div>
             )}
           </div>
-        </div>
-      )}
-    </AppShell>
-  );
-}
 
-function AnalysisPlaceholder({ onReset }: { onReset: () => void }) {
-  const navigate = useNavigate();
-  return (
-    <AppShell>
-      <motion.div
-        className="flex min-h-[80vh] flex-col items-center justify-center gap-6 px-8 text-center"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      >
-        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-hairline bg-foreground/5">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          {/* Name input */}
+          <div className="space-y-2">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Name</p>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={`${c.instrument} take…`}
+              maxLength={60}
+              className="w-full rounded-lg border border-hairline bg-transparent px-4 py-3 text-sm font-semibold placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/30"
+            />
+          </div>
+
+          {/* Inline MIDI section */}
+          <MidiSection
+            isGuitar={isGuitar}
+            selectedTrack={selectedTrack}
+            selectedSong={selectedSong}
+            onPickTrack={(t) => { setSelectedTrack(t); setSelectedSong(null); }}
+            onPickSong={(s) => { setSelectedSong(s); setSelectedTrack(null); }}
+            onClear={() => { setSelectedTrack(null); setSelectedSong(null); }}
+          />
+
+          {/* Submit */}
+          {uploading ? (
+            <div className="space-y-2">
+              <Progress value={Math.round(progress * 100)} />
+              <p className="text-center text-xs text-muted-foreground">Uploading…</p>
+            </div>
+          ) : (
+            <Pill
+              size="lg"
+              className="w-full"
+              onClick={() => void submit()}
+              disabled={!wavBlob || recording}
+            >
+              Submit recording
+            </Pill>
+          )}
         </div>
-        <div>
-          <p className="text-xl font-bold tracking-tight">Recording submitted!</p>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Your take is being analyzed. Head to your profile to listen back and see your results.
-          </p>
-        </div>
-        <Pill size="lg" className="w-full" onClick={() => void navigate({ to: "/app/profile" })}>
-          Go to my profile
-        </Pill>
-        <button
-          onClick={onReset}
-          className="text-xs text-muted-foreground underline underline-offset-4"
-        >
-          Record another take
-        </button>
-      </motion.div>
-    </AppShell>
-  );
+      </AppShell>
+    );
+  }
+
+  return null;
 }
 
 function Waveform({ active }: { active: boolean }) {
