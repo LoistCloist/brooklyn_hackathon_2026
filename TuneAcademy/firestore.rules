@@ -70,7 +70,8 @@ service cloud.firestore {
     match /reports/{reportId} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
     match /reels/{reelId} {
