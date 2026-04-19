@@ -76,6 +76,40 @@ npm run dev
 
 After `npm run dev`, open the URL Vite prints in the terminal (usually `http://localhost:8080`).
 
+### Cloud Functions (`TuneAcademy/functions`)
+
+The Firebase Cloud Functions package also needs its own install step and a **`.env`** in that folder.
+
+From the repository root:
+
+```bash
+cd TuneAcademy
+cd functions
+npm install
+```
+
+Create a file named **`.env`** in **`TuneAcademy/functions`** (next to that folder’s `package.json`). Use the same variables and credential values as the project’s **`TuneAcademy/functions/.env`** (that file is for local use and should not be committed; if you are joining the team, copy the values from a teammate’s secure copy or your own Google OAuth, redirect URI, app origin, and ElevenLabs key).
+
+| Variable | Purpose |
+| --- | --- |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth web client ID (Calendar / Meet flows) |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret |
+| `GOOGLE_OAUTH_REDIRECT_URI` | OAuth redirect URL (must match your deployed callback function URL or local emulator setup) |
+| `APP_ORIGIN` | Frontend origin used for redirects (e.g. `http://localhost:8080` when running Vite) |
+| `ELEVENLABS_API_KEY` | ElevenLabs API key for TTS |
+
+Optional: `ELEVENLABS_TTS_VOICE_ID` / `ELEVENLABS_VOICE_ID`, `ELEVENLABS_TTS_MODEL_ID`, `ANALYSIS_API_URL` (defaults exist where noted in code).
+
+```bash
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_OAUTH_REDIRECT_URI=
+APP_ORIGIN=http://localhost:8080
+ELEVENLABS_API_KEY=
+```
+
+Do not commit real Cloud Functions `.env` files.
+
 ### Environment variables
 
 Create a file named **`.env`** in the **`TuneAcademy`** directory (next to `package.json`). 
