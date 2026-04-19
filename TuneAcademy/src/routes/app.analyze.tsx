@@ -355,7 +355,7 @@ function SelectedMidiCard({ label, sub, midiUrl, onClear }: { label: string; sub
                      ) : playing ? (
                         <StopCircle className="h-3.5 w-3.5" />
                      ) : (
-                        <Play className="h-3.5 w-3.5 translate-x-[1px]" />
+                        <Play className="h-3.5 w-3.5 translate-x-px" />
                      )}
                   </button>
                )}
@@ -872,11 +872,11 @@ function AnalyzeTab() {
 function Waveform({ active }: { active: boolean }) {
    const bars = Array.from({ length: 28 });
    return (
-      <div className="flex h-16 items-center gap-[3px]">
+      <div className="flex h-16 items-center gap-0.75">
          {bars.map((_, i) => (
             <motion.span
                key={i}
-               className="block w-[3px] rounded-full bg-foreground"
+               className="block w-0.75 rounded-full bg-foreground"
                animate={active ? { height: [6, 10 + Math.random() * 36, 6] } : { height: 4 }}
                transition={{ duration: 0.7 + (i % 5) * 0.07, repeat: active ? Infinity : 0, ease: "easeInOut" }}
                style={{ height: 4 }}
