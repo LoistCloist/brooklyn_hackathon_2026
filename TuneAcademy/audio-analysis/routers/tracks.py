@@ -1,4 +1,4 @@
-"""GET /tracks — list available GuitarSet reference tracks."""
+"""GET /tracks — list available LAKH MIDI reference tracks."""
 
 from fastapi import APIRouter, HTTPException
 

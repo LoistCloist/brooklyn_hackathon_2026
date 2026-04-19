@@ -1,8 +1,8 @@
 """
-GuitarSet reference store — backed by Firestore.
+LAKH MIDI reference store — backed by Firestore.
 
 At startup, load_all() fetches all documents from the
-`guitarset_tracks` collection and caches them in memory.
+`lakh_tracks` collection and caches them in memory.
 
 Auth: set GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 or run inside a GCP environment with ADC configured.
@@ -13,18 +13,21 @@ from dataclasses import dataclass, field
 
 from transcribe import NoteEvent
 
-_COLLECTION = "guitarset_tracks"
+_COLLECTION = "lakh_tracks"
 
 _store: dict[str, list[NoteEvent]] = {}
+_meta: dict[str, dict] = {}
 
 
 @dataclass
 class TrackInfo:
     track_id: str
-    progression: str
-    tempo: int
-    key: str
-    style: str
+    title: str
+    artist: str
+    instrument: str
+    tempo_bpm: int
+    note_count: int
+    duration_seconds: float
     notes: list[NoteEvent] = field(default_factory=list)
 
 
@@ -41,7 +44,7 @@ def _get_db():
 
 
 def load_all() -> None:
-    """Fetch all GuitarSet tracks from Firestore and cache in memory."""
+    """Fetch all LAKH tracks from Firestore and cache in memory."""
     try:
         db = _get_db()
     except Exception as exc:
@@ -57,14 +60,22 @@ def load_all() -> None:
                 time=float(n["time"]),
                 duration=float(n["duration"]),
                 pitch=float(n["pitch"]),
-                confidence=float(n["confidence"]),
+                confidence=1.0,
             )
             for n in data.get("notes", [])
         ]
         _store[doc.id] = notes
+        _meta[doc.id] = {
+            "title": data.get("title", "Unknown"),
+            "artist": data.get("artist", "Unknown"),
+            "instrument": data.get("instrument", "unknown"),
+            "tempo_bpm": int(data.get("tempo_bpm", 0)),
+            "note_count": len(notes),
+            "duration_seconds": float(data.get("duration_seconds", 0.0)),
+        }
         count += 1
 
-    print(f"[reference_store] Loaded {count} tracks from Firestore")
+    print(f"[reference_store] Loaded {count} LAKH tracks from Firestore")
 
 
 def get_track_ids() -> list[str]:
@@ -78,22 +89,16 @@ def get_notes(track_id: str) -> list[NoteEvent]:
 
 
 def get_track_info(track_id: str) -> TrackInfo:
-    notes = get_notes(track_id)
-    try:
-        _, rest = track_id.split("_", 1)
-        middle, style = rest.rsplit("_", 1)
-        parts = middle.split("-")
-        progression = parts[0]
-        tempo = int(parts[1]) if len(parts) > 1 else 0
-        key = parts[2] if len(parts) > 2 else "?"
-    except (ValueError, IndexError):
-        progression, tempo, key, style = "?", 0, "?", "?"
-
+    if track_id not in _store:
+        raise KeyError(f"Track '{track_id}' not found. {len(_store)} tracks loaded.")
+    m = _meta[track_id]
     return TrackInfo(
         track_id=track_id,
-        progression=progression,
-        tempo=tempo,
-        key=key,
-        style=style,
-        notes=notes,
+        title=m["title"],
+        artist=m["artist"],
+        instrument=m["instrument"],
+        tempo_bpm=m["tempo_bpm"],
+        note_count=m["note_count"],
+        duration_seconds=m["duration_seconds"],
+        notes=_store[track_id],
     )
