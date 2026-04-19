@@ -5,13 +5,14 @@ import { Pill } from "@/components/tuneacademy/Pill";
 import { InstrumentIcon } from "@/components/tuneacademy/InstrumentIcon";
 import { challenges } from "@/lib/mockData";
 import { useUploadRecording } from "@/hooks/useUploadRecording";
-import { Mic, Square, Loader2, ChevronLeft, Music2, ChevronDown, ChevronUp } from "lucide-react";
+import { Mic, Square, Loader2, ChevronLeft, Music2, ChevronDown, ChevronUp, Play, StopCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { collection, getDocs } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
+import { Midi } from "@tonejs/midi";
 
 export const Route = createFileRoute("/app/analyze")({
   head: () => ({ meta: [{ title: "Analyze — TuneAcademy" }] }),
@@ -29,6 +30,7 @@ interface TrackInfo {
   tempo: number;
   key: string;
   style: string;
+  midi_url?: string;
 }
 
 interface SongInfo {
@@ -38,6 +40,7 @@ interface SongInfo {
   tempo_bpm: number;
   duration_seconds: number;
   instrument: string;
+  midi_url?: string;
 }
 
 // ── WAV encoding ──────────────────────────────────────────────────────────────
@@ -71,7 +74,129 @@ function encodeWav(samples: Float32Array, sampleRate: number): Blob {
   return new Blob([buf], { type: "audio/wav" });
 }
 
+// ── MIDI player ───────────────────────────────────────────────────────────────
+
+function useMidiPlayer(midiUrl: string | undefined) {
+  const [playing, setPlaying] = useState(false);
+  const [loadingMidi, setLoadingMidi] = useState(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  function stop() {
+    audioCtxRef.current?.close();
+    audioCtxRef.current = null;
+    setPlaying(false);
+  }
+
+  async function play() {
+    if (!midiUrl) return;
+    if (playing) { stop(); return; }
+
+    setLoadingMidi(true);
+    try {
+      const res = await fetch(midiUrl);
+      const buf = await res.arrayBuffer();
+      const midi = new Midi(buf);
+
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      setPlaying(true);
+
+      const now = ctx.currentTime + 0.1;
+      let endTime = now;
+
+      midi.tracks.forEach((track) => {
+        track.notes.forEach((note) => {
+          const start = now + note.time;
+          const dur = Math.max(note.duration, 0.05);
+          const freq = 440 * Math.pow(2, (note.midi - 69) / 12);
+
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+
+          osc.type = "sine";
+          osc.frequency.value = freq;
+
+          gain.gain.setValueAtTime(0, start);
+          gain.gain.linearRampToValueAtTime(note.velocity * 0.4, start + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+
+          osc.start(start);
+          osc.stop(start + dur + 0.05);
+          endTime = Math.max(endTime, start + dur + 0.05);
+        });
+      });
+
+      // Auto-stop when playback finishes
+      const remaining = (endTime - ctx.currentTime) * 1000;
+      setTimeout(() => {
+        if (audioCtxRef.current === ctx) stop();
+      }, remaining + 200);
+    } catch {
+      toast.error("Could not load MIDI file.");
+      stop();
+    } finally {
+      setLoadingMidi(false);
+    }
+  }
+
+  // Clean up on unmount
+  useEffect(() => () => { audioCtxRef.current?.close(); }, []);
+
+  return { playing, loadingMidi, play, stop };
+}
+
 // ── Inline MIDI section ───────────────────────────────────────────────────────
+
+function SelectedMidiCard({
+  label,
+  sub,
+  midiUrl,
+  onClear,
+}: {
+  label: string;
+  sub?: string;
+  midiUrl?: string;
+  onClear: () => void;
+}) {
+  const { playing, loadingMidi, play } = useMidiPlayer(midiUrl);
+
+  return (
+    <Card className="px-4 py-3">
+      <div className="flex items-center justify-between">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold">{label}</p>
+          {sub && <p className="mt-0.5 text-xs text-muted-foreground capitalize">{sub}</p>}
+        </div>
+        <div className="ml-3 flex items-center gap-3 shrink-0">
+          {midiUrl && (
+            <button
+              onClick={play}
+              disabled={loadingMidi}
+              aria-label={playing ? "Stop preview" : "Play preview"}
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-hairline transition-colors hover:border-foreground/40 disabled:opacity-50"
+            >
+              {loadingMidi ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              ) : playing ? (
+                <StopCircle className="h-3.5 w-3.5" />
+              ) : (
+                <Play className="h-3.5 w-3.5 translate-x-[1px]" />
+              )}
+            </button>
+          )}
+          <button
+            onClick={onClear}
+            className="text-xs text-muted-foreground underline underline-offset-4"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 function MidiSection({
   isGuitar,
@@ -91,7 +216,7 @@ function MidiSection({
   const [tracks, setTracks] = useState<TrackInfo[]>([]);
   const [songs, setSongs] = useState<SongInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [styleFilter, setStyleFilter] = useState<"all" | "solo" | "comp">("all");
   const [query, setQuery] = useState("");
 
@@ -126,13 +251,14 @@ function MidiSection({
   const selectionLabel = selectedTrack
     ? `${selectedTrack.progression} — ${selectedTrack.key}`
     : selectedSong
-    ? selectedSong.title ?? selectedSong.track_id
+    ? (selectedSong.title ?? selectedSong.track_id)
     : null;
   const selectionSub = selectedTrack
     ? `${selectedTrack.style} · ${selectedTrack.tempo} BPM`
     : selectedSong
     ? `${selectedSong.artist ?? ""}${selectedSong.tempo_bpm ? ` · ${selectedSong.tempo_bpm} BPM` : ""}`
     : null;
+  const selectionMidiUrl = selectedTrack?.midi_url ?? selectedSong?.midi_url;
 
   return (
     <div className="space-y-3">
@@ -141,7 +267,7 @@ function MidiSection({
         className="flex w-full items-center justify-between"
       >
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-          MIDI Reference <span className="normal-case">(optional)</span>
+          MIDI Reference <span className="text-destructive">*</span>
         </p>
         {expanded ? (
           <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -150,23 +276,26 @@ function MidiSection({
         )}
       </button>
 
-      {hasSelection && !expanded && (
-        <Card className="flex items-center justify-between px-4 py-3">
-          <div>
-            <p className="text-sm font-semibold">{selectionLabel}</p>
-            {selectionSub && <p className="mt-0.5 text-xs text-muted-foreground capitalize">{selectionSub}</p>}
-          </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onClear(); }}
-            className="text-xs text-muted-foreground underline underline-offset-4"
-          >
-            Clear
-          </button>
-        </Card>
+      {hasSelection && !expanded && selectionLabel && (
+        <SelectedMidiCard
+          label={selectionLabel}
+          sub={selectionSub ?? undefined}
+          midiUrl={selectionMidiUrl}
+          onClear={onClear}
+        />
       )}
 
       {expanded && (
         <div className="space-y-3">
+          {hasSelection && selectionLabel && (
+            <SelectedMidiCard
+              label={selectionLabel}
+              sub={selectionSub ?? undefined}
+              midiUrl={selectionMidiUrl}
+              onClear={onClear}
+            />
+          )}
+
           {isGuitar ? (
             <div className="flex gap-2">
               {(["all", "solo", "comp"] as const).map((f) => (
@@ -517,14 +646,21 @@ function AnalyzeTab() {
               <p className="text-center text-xs text-muted-foreground">Uploading…</p>
             </div>
           ) : (
-            <Pill
-              size="lg"
-              className="w-full"
-              onClick={() => void submit()}
-              disabled={!wavBlob || recording}
-            >
-              Submit recording
-            </Pill>
+            <div className="space-y-2">
+              <Pill
+                size="lg"
+                className="w-full"
+                onClick={() => void submit()}
+                disabled={!wavBlob || recording || (!selectedTrack && !selectedSong)}
+              >
+                Submit recording
+              </Pill>
+              {!selectedTrack && !selectedSong && (
+                <p className="text-center text-xs text-muted-foreground">
+                  Select a MIDI reference above to continue
+                </p>
+              )}
+            </div>
           )}
         </div>
       </AppShell>
