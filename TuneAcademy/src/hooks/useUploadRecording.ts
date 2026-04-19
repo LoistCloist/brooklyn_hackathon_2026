@@ -3,6 +3,8 @@ import { collection, doc, serverTimestamp, setDoc, updateDoc } from "firebase/fi
 import { ref, uploadBytesResumable } from "firebase/storage";
 import { getFirebaseAuth, getFirestoreDb, getFirebaseStorage } from "@/lib/firebase";
 
+const ANALYZE_URL = "https://musilearn-api-966115096812.us-east1.run.app/analyze";
+
 export function useUploadRecording(): {
   uploadRecording: (args: { wavBlob: Blob; instrument: string; challenge: string }) => Promise<string>;
   progress: number;
@@ -51,6 +53,31 @@ export function useUploadRecording(): {
           );
         });
         setProgress(1);
+
+        // Call analyze API and write results back to Firestore
+        try {
+          const form = new FormData();
+          form.append("instrument", args.instrument);
+          form.append("audio", args.wavBlob, "recording.wav");
+          if (args.referenceId) form.append("reference_id", args.referenceId);
+
+          const res = await fetch(ANALYZE_URL, { method: "POST", body: form });
+          if (res.ok) {
+            const analysis = await res.json();
+            await updateDoc(doc(db, "reports", recordingId), {
+              status: "done",
+              overallScore: analysis.overall_score,
+              dimensionScores: analysis.dimension_scores,
+              weaknesses: analysis.weaknesses,
+              ...(analysis.comparison ? { comparison: analysis.comparison } : {}),
+            });
+          } else {
+            await updateDoc(doc(db, "reports", recordingId), { status: "error" });
+          }
+        } catch {
+          await updateDoc(doc(db, "reports", recordingId), { status: "error" }).catch(() => null);
+        }
+
         return recordingId;
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Upload failed.";

@@ -70,15 +70,19 @@ function InstructorProfile() {
   const [requestSending, setRequestSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [dmText, setDmText] = useState("");
+  const [chosenSessionType, setChosenSessionType] = useState<"solo" | "group">("solo");
   const [dmSending, setDmSending] = useState(false);
 
   const offeredSlots = useMemo(() => {
-    if (!i) return [];
-    const holds = flattenEngagementHolds(
-      engagements.map((e) => ({ weeklySlots: e.weeklySlots, meetings: e.meetings })),
-    );
-    return subtractRecurringHolds(dedupeWeeklySlots(i.weeklyAvailability ?? []), holds);
-  }, [i, engagements]);
+  if (!i) return [];
+  const holds = flattenEngagementHolds(
+    engagements.map((e) => ({ weeklySlots: e.weeklySlots, meetings: e.meetings })),
+  );
+  const baseSlots = chosenSessionType === "group"
+    ? ((i as any).groupWeeklyAvailability ?? [])
+    : (i.weeklyAvailability ?? []);
+  return subtractRecurringHolds(dedupeWeeklySlots(baseSlots), holds);
+}, [i, engagements, chosenSessionType]);
 
   const maxWeeksForInstructor = Math.min(52, Math.max(1, i?.maxTutoringWeeks ?? 12));
 
@@ -311,10 +315,56 @@ function InstructorProfile() {
             ) : (
               <>
                 <h3 className="text-lg font-semibold tracking-tight">Request services</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Choose recurring weekly times from this tutor’s availability, how long the series
-                  should run, and an optional note.
-                </p>
+<p className="mt-1 text-sm text-muted-foreground">
+  Choose your session type, recurring weekly times, and an optional note.
+</p>
+
+{/* Session type picker */}
+{((i as any).sessionType === "both" || (i as any).sessionType === "solo" || (i as any).sessionType === "group") && (
+  <>
+    <p className="mt-5 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
+      Session type
+    </p>
+    <div className="grid grid-cols-2 gap-2">
+      {((i as any).sessionType === "solo" || (i as any).sessionType === "both") && (
+        <button
+          type="button"
+          onClick={() => setChosenSessionType("solo")}
+          className={`rounded-xl border p-3 text-center text-sm font-semibold transition-all ${
+            chosenSessionType === "solo"
+              ? "border-foreground bg-foreground text-background"
+              : "border-hairline bg-surface text-foreground"
+          }`}
+        >
+          1-on-1
+          {(i as any).hourlyRate === 0 ? (
+            <span className="mt-0.5 block text-[10px] font-normal opacity-70">Free</span>
+          ) : (
+            <span className="mt-0.5 block text-[10px] font-normal opacity-70">${(i as any).hourlyRate}/hr</span>
+          )}
+        </button>
+      )}
+      {((i as any).sessionType === "group" || (i as any).sessionType === "both") && (
+        <button
+          type="button"
+          onClick={() => setChosenSessionType("group")}
+          className={`rounded-xl border p-3 text-center text-sm font-semibold transition-all ${
+            chosenSessionType === "group"
+              ? "border-foreground bg-foreground text-background"
+              : "border-hairline bg-surface text-foreground"
+          }`}
+        >
+          Group (3:1)
+          {(i as any).groupHourlyRate === 0 ? (
+            <span className="mt-0.5 block text-[10px] font-normal opacity-70">Free</span>
+          ) : (
+            <span className="mt-0.5 block text-[10px] font-normal opacity-70">${(i as any).groupHourlyRate}/person</span>
+          )}
+        </button>
+      )}
+    </div>
+  </>
+)}
 
                 <p className="mt-5 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
                   Weekly times

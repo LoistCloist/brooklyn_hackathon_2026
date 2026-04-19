@@ -282,7 +282,10 @@ export async function saveInstructorOnboarding(
     specialties: string[];
     bio: string;
     hourlyRate: number;
+    groupHourlyRate: number;
+    sessionType: "solo" | "group" | "both";
     weeklyAvailability: WeeklyTimeSlot[];
+    groupWeeklyAvailability: WeeklyTimeSlot[];
     maxTutoringWeeks: number;
   },
 ): Promise<void> {
@@ -296,7 +299,10 @@ export async function saveInstructorOnboarding(
     specialties: payload.specialties,
     bio: payload.bio,
     hourlyRate: payload.hourlyRate,
+    groupHourlyRate: payload.groupHourlyRate,
+    sessionType: payload.sessionType,
     weeklyAvailability: payload.weeklyAvailability,
+    groupWeeklyAvailability: payload.groupWeeklyAvailability,
     maxTutoringWeeks: payload.maxTutoringWeeks,
     rating: 0,
     reviewCount: 0,

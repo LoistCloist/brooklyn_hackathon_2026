@@ -1,15 +1,19 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { AppShell } from "@/components/tuneacademy/AppShell";
 import { Card } from "@/components/tuneacademy/Card";
 import { Pill } from "@/components/tuneacademy/Pill";
 import { ScoreBar } from "@/components/tuneacademy/ScoreBar";
-import { dimensionLabels, recentReport } from "@/lib/mockData";
+import { dimensionLabels } from "@/lib/mockData";
 import { ArrowLeft, ArrowRight, Mic, MicOff, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useConversation } from "@elevenlabs/react";
+import { doc, onSnapshot } from "firebase/firestore";
+import { getFirestoreDb } from "@/lib/firebase";
 
 export const Route = createFileRoute("/app/analyze/result")({
+  validateSearch: z.object({ reportId: z.string().optional() }),
   head: () => ({ meta: [{ title: "Your analysis – TuneAcademy" }] }),
   component: ResultPage,
 });
@@ -31,9 +35,41 @@ function useCount(target: number, durationMs = 900) {
   return n;
 }
 
+type ReportData = {
+  instrument: string;
+  overallScore: number;
+  dimensionScores: Record<string, number>;
+  weaknesses: string[];
+  status: string;
+};
+
 function ResultPage() {
   const nav = useNavigate();
-  const score = useCount(recentReport.overall_score);
+  const { reportId } = Route.useSearch();
+  const [report, setReport] = useState<ReportData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!reportId) { setLoading(false); return; }
+    const db = getFirestoreDb();
+    const unsub = onSnapshot(doc(db, "reports", reportId), (snap) => {
+      if (!snap.exists()) return;
+      const d = snap.data();
+      if (d.status === "done" || d.status === "error") {
+        setReport({
+          instrument: d.instrument ?? "Unknown",
+          overallScore: d.overallScore ?? 0,
+          dimensionScores: d.dimensionScores ?? {},
+          weaknesses: d.weaknesses ?? [],
+          status: d.status,
+        });
+        setLoading(false);
+      }
+    });
+    return unsub;
+  }, [reportId]);
+
+  const score = useCount(report?.overallScore ?? 0);
 
   const conversation = useConversation({
     onConnect: () => console.log("TuneCoach connected"),
@@ -54,6 +90,29 @@ function ResultPage() {
       });
     }
   };
+
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="flex min-h-[80vh] flex-col items-center justify-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Analyzing your recording…</p>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!report || report.status === "error") {
+    return (
+      <AppShell>
+        <div className="flex min-h-[80vh] flex-col items-center justify-center gap-4 px-8 text-center">
+          <p className="text-lg font-semibold">Analysis unavailable</p>
+          <p className="text-sm text-muted-foreground">Something went wrong. Try recording again.</p>
+          <Pill size="lg" onClick={() => nav({ to: "/app/analyze" })}>Try again</Pill>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
@@ -78,7 +137,7 @@ function ResultPage() {
         <p className="mt-2 text-[96px] font-extrabold leading-none tracking-tighter tabular-nums">
           {score}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">/ 100 · {recentReport.instrument}</p>
+        <p className="mt-1 text-xs text-muted-foreground">/ 100 · {report.instrument}</p>
       </motion.div>
 
       <section className="px-5 pt-8">
@@ -88,28 +147,29 @@ function ResultPage() {
             <ScoreBar
               key={d.key}
               label={d.label}
-              value={recentReport.dimension_scores[d.key]}
+              value={report.dimensionScores[d.key] ?? 0}
               animate
             />
           ))}
         </Card>
       </section>
 
-      <section className="px-5 pt-6">
-        <h2 className="mb-3 text-sm font-semibold tracking-tight">Weaknesses</h2>
-        <Card className="p-5">
-          <ul className="space-y-2.5 text-sm">
-            {recentReport.weaknesses.map((w, i) => (
-              <li key={i} className="flex gap-2">
-                <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-foreground" />
-                <span>{w}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      </section>
+      {report.weaknesses.length > 0 && (
+        <section className="px-5 pt-6">
+          <h2 className="mb-3 text-sm font-semibold tracking-tight">Weaknesses</h2>
+          <Card className="p-5">
+            <ul className="space-y-2.5 text-sm">
+              {report.weaknesses.map((w, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-foreground" />
+                  <span>{w}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </section>
+      )}
 
-      {/* TuneCoach Voice Button */}
       <div className="px-5 pt-6">
         <Card className="p-5 text-center">
           <p className="mb-1 text-sm font-semibold">Talk to TuneCoach</p>
@@ -124,9 +184,7 @@ function ResultPage() {
             onClick={handleToggleCoach}
             disabled={isConnecting}
             className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full transition-all ${
-              isConnected
-                ? "bg-red-500 text-white"
-                : "bg-foreground text-background"
+              isConnected ? "bg-red-500 text-white" : "bg-foreground text-background"
             }`}
           >
             {isConnecting ? (
