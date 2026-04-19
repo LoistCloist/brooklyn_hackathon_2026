@@ -8,40 +8,258 @@ import { ScoreBar } from "@/components/tuneacademy/ScoreBar";
 import { dimensionLabels } from "@/lib/mockData";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
-import { formatSpecialtyLabel, useInstructorsDirectory, type InstructorDirectoryRow } from "@/hooks/useInstructorsDirectory";
-import { getFirestoreDb } from "@/lib/firebase";
+import {
+  formatSpecialtyLabel,
+  useInstructorsDirectory,
+  type InstructorDirectoryRow,
+} from "@/hooks/useInstructorsDirectory";
 import { specialtyToSlug } from "@/lib/tuneacademyFirestore";
-import { ArrowLeft, ArrowRight, Mic, MicOff, Loader2, Star } from "lucide-react";
+import {
+  Conversation,
+  type Conversation as ElevenLabsConversation,
+  type PartialOptions,
+} from "@elevenlabs/react";
+import { ArrowLeft, ArrowRight, Mic, Loader2, Send, Star, Volume2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
-import { ConversationProvider, useConversation } from "@elevenlabs/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
+import { getFirestoreDb } from "@/lib/firebase";
+import { synthesizeTuneCoachSpeech } from "@/lib/tuneCoachSpeech";
+
+const DEFAULT_TUNE_COACH_AGENT_ID = "agent_4301kpj8w620ectvz76fns3ckyj3";
+const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID?.trim() || DEFAULT_TUNE_COACH_AGENT_ID;
+
+const TUNE_COACH_SYSTEM_PROMPT = `
+You are TuneCoach, a concise music coach inside TuneAcademy.
+
+You receive a TuneAcademy analysis report generated from Essentia audio features and, when available, a reference comparison. Use only that report context. Do not invent song details, notes, teacher names, audio events, diagnoses, or scores that are not present.
+
+Report interpretation:
+- Scores are 0-100. Lower scores are the highest-priority practice targets.
+- dimensionScores include pitch_centre, pitch_stability, rhythm, tone_quality, and note_attack.
+- comparison.note_accuracy measures how closely the learner matched reference pitches.
+- comparison.timing_accuracy measures timing alignment against the reference.
+- comparison.missed_notes and comparison.extra_notes are counts from the reference comparison.
+- weaknesses are backend-generated plain-English findings and should be treated as important evidence.
+
+Coaching rules:
+1. Start with the single biggest priority from the numbers.
+2. Explain what the metric means in learner-friendly language.
+3. Give 2 or 3 concrete practice steps the learner can try right now.
+4. Tie advice back to the instrument when possible.
+5. Keep responses under 120 words unless the learner asks for detail.
+6. If the learner asks about something outside the report, answer briefly and bring the focus back to practice.
+`.trim();
+
+const INITIAL_COACH_REQUEST =
+  "Give the learner an initial TuneCoach response from the report context. Include the top issue, why it matters, and two specific practice steps.";
+
+type ChatMessage = { role: "user" | "agent"; text: string };
+
+function useTextChat(agentId: string, reportSummary: string) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [connected, setConnected] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const conversationRef = useRef<ElevenLabsConversation | null>(null);
+  const connectPromiseRef = useRef<Promise<ElevenLabsConversation | null> | null>(null);
+  const reportSummaryRef = useRef(reportSummary);
+  const ignoredUserEchoesRef = useRef<string[]>([]);
+  const hiddenUserPromptsRef = useRef<string[]>([]);
+  const initialCoachRequestedRef = useRef(false);
+  const intentionalDisconnectRef = useRef(false);
+
+  useEffect(() => {
+    reportSummaryRef.current = reportSummary;
+    initialCoachRequestedRef.current = false;
+    ignoredUserEchoesRef.current = [];
+    hiddenUserPromptsRef.current = [];
+    setMessages([]);
+    setError(null);
+  }, [reportSummary]);
+
+  const appendMessage = useCallback((role: ChatMessage["role"], text: string) => {
+    const clean = text.trim();
+    if (!clean) return;
+
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.role === role && last.text === clean) return prev;
+      return [...prev, { role, text: clean }];
+    });
+  }, []);
+
+  const handleIncomingMessage = useCallback(
+    (message: { role?: string; source?: string; message?: string }) => {
+      const text = message.message?.trim();
+      if (!text) return;
+
+      const role: ChatMessage["role"] =
+        message.role === "user" || message.source === "user" ? "user" : "agent";
+
+      if (role === "user") {
+        const hiddenIndex = hiddenUserPromptsRef.current.indexOf(text);
+        if (hiddenIndex >= 0) {
+          hiddenUserPromptsRef.current.splice(hiddenIndex, 1);
+          return;
+        }
+
+        const echoIndex = ignoredUserEchoesRef.current.indexOf(text);
+        if (echoIndex >= 0) {
+          ignoredUserEchoesRef.current.splice(echoIndex, 1);
+          return;
+        }
+      }
+
+      appendMessage(role, text);
+    },
+    [appendMessage],
+  );
+
+  const buildSessionOptions = useCallback(
+    (): PartialOptions => ({
+      agentId,
+      connectionType: "websocket",
+      textOnly: true,
+      dynamicVariables: {
+        report_summary: reportSummaryRef.current,
+        tune_coach_instructions: TUNE_COACH_SYSTEM_PROMPT,
+      },
+      overrides: {
+        conversation: {
+          textOnly: true,
+        },
+      },
+      onConnect: () => {
+        setConnected(true);
+        setConnecting(false);
+        setError(null);
+      },
+      onDisconnect: (details) => {
+        setConnected(false);
+        setConnecting(false);
+        conversationRef.current = null;
+        connectPromiseRef.current = null;
+
+        if (!intentionalDisconnectRef.current && details.reason === "error") {
+          setError(details.message || "TuneCoach disconnected before it could answer.");
+        }
+        intentionalDisconnectRef.current = false;
+      },
+      onError: (message) => {
+        setError(message || "TuneCoach could not complete the request.");
+      },
+      onMessage: handleIncomingMessage,
+    }),
+    [agentId, handleIncomingMessage],
+  );
+
+  const connect = useCallback(async () => {
+    if (!agentId) {
+      setError("TuneCoach agent is not configured.");
+      return null;
+    }
+
+    if (conversationRef.current?.isOpen()) return conversationRef.current;
+    if (connectPromiseRef.current) return connectPromiseRef.current;
+
+    setConnecting(true);
+    setError(null);
+
+    const promise = (async () => {
+      try {
+        const conversation = await Conversation.startSession(buildSessionOptions());
+        conversationRef.current = conversation;
+        conversation.sendContextualUpdate(
+          `TuneAcademy report context:\n${reportSummaryRef.current}\n\nTuneCoach instructions:\n${TUNE_COACH_SYSTEM_PROMPT}`,
+        );
+
+        if (!initialCoachRequestedRef.current) {
+          initialCoachRequestedRef.current = true;
+          hiddenUserPromptsRef.current.push(INITIAL_COACH_REQUEST);
+          conversation.sendUserMessage(INITIAL_COACH_REQUEST);
+        }
+
+        return conversation;
+      } catch (connectionError) {
+        const message =
+          connectionError instanceof Error
+            ? connectionError.message
+            : "TuneCoach could not connect.";
+        setConnected(false);
+        setConnecting(false);
+        setError(message);
+        return null;
+      }
+    })();
+
+    connectPromiseRef.current = promise;
+    const conversation = await promise;
+    connectPromiseRef.current = null;
+    setConnecting(false);
+    return conversation;
+  }, [agentId, buildSessionOptions]);
+
+  const send = useCallback(
+    async (text: string) => {
+      const clean = text.trim();
+      if (!clean) return false;
+
+      const conversation = conversationRef.current?.isOpen()
+        ? conversationRef.current
+        : await connect();
+      if (!conversation?.isOpen()) {
+        setError("TuneCoach is offline. Try sending again in a moment.");
+        return false;
+      }
+
+      ignoredUserEchoesRef.current.push(clean);
+      appendMessage("user", clean);
+      conversation.sendUserMessage(clean);
+      return true;
+    },
+    [appendMessage, connect],
+  );
+
+  const disconnect = useCallback(() => {
+    intentionalDisconnectRef.current = true;
+    void conversationRef.current?.endSession().catch(() => null);
+    conversationRef.current = null;
+    connectPromiseRef.current = null;
+    setConnected(false);
+    setConnecting(false);
+  }, []);
+
+  useEffect(() => disconnect, [disconnect]);
+
+  return { messages, connected, connecting, error, connect, send, disconnect };
+}
 
 export const Route = createFileRoute("/app/analyze/result")({
-   validateSearch: z.object({ reportId: z.string().optional() }),
-   head: () => ({ meta: [{ title: "Your analysis – TuneAcademy" }] }),
-   component: ResultPage,
+  validateSearch: z.object({ reportId: z.string().optional() }),
+  head: () => ({ meta: [{ title: "Your analysis - TuneAcademy" }] }),
+  component: ResultPage,
 });
 
 function initialsFromName(name: string): string {
-   const parts = name.trim().split(/\s+/).filter(Boolean);
-   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-   if (parts.length === 1 && parts[0].length >= 2) return parts[0].slice(0, 2).toUpperCase();
-   return (parts[0]?.[0] || "?").toUpperCase();
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  if (parts.length === 1 && parts[0].length >= 2) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0]?.[0] || "?").toUpperCase();
 }
 
 function learnerSkillLevelLabel(level: "beginner" | "intermediate" | "advanced"): string {
-   if (level === "beginner") return "Beginner";
-   if (level === "intermediate") return "Intermediate";
-   return "Advanced";
+  if (level === "beginner") return "Beginner";
+  if (level === "intermediate") return "Intermediate";
+  return "Advanced";
 }
 
 function formatTeachingLevelBadge(slug: string): string {
-   const s = slug.trim().toLowerCase();
-   if (s === "beginner") return "Beginner";
-   if (s === "intermediate") return "Intermediate";
-   if (s === "advanced") return "Advanced";
-   return formatSpecialtyLabel(slug);
+  const s = slug.trim().toLowerCase();
+  if (s === "beginner") return "Beginner";
+  if (s === "intermediate") return "Intermediate";
+  if (s === "advanced") return "Advanced";
+  return formatSpecialtyLabel(slug);
 }
 
 /**
@@ -49,328 +267,597 @@ function formatTeachingLevelBadge(slug: string): string {
  * Ranked so instrument + level wins, then instrument-only, then level-only.
  */
 function getSuggestedInstructors(
-   rows: InstructorDirectoryRow[],
-   reportInstrument: string,
-   learnerSkillLevel: "beginner" | "intermediate" | "advanced" | undefined,
-   max: number,
+  rows: InstructorDirectoryRow[],
+  reportInstrument: string,
+  learnerSkillLevel: "beginner" | "intermediate" | "advanced" | undefined,
+  max: number,
 ): InstructorDirectoryRow[] {
-   const slug = specialtyToSlug(reportInstrument);
-   const noInstrument = !slug || slug === "unknown";
+  const slug = specialtyToSlug(reportInstrument);
+  const noInstrument = !slug || slug === "unknown";
 
-   const scored = rows.map((row) => {
-      const hasInst =
-         !noInstrument && row.doc.specialties.some((sp) => specialtyToSlug(sp) === slug);
-      const hasLevel =
-         Boolean(learnerSkillLevel) &&
-         (row.doc.teachingLevels ?? []).some((l) => l.trim().toLowerCase() === learnerSkillLevel);
-      let tier = 0;
-      if (hasInst && hasLevel) tier = 3;
-      else if (hasInst) tier = 2;
-      else if (hasLevel) tier = 1;
-      return { row, tier };
-   });
+  const scored = rows.map((row) => {
+    const hasInst = !noInstrument && row.doc.specialties.some((sp) => specialtyToSlug(sp) === slug);
+    const hasLevel =
+      Boolean(learnerSkillLevel) &&
+      (row.doc.teachingLevels ?? []).some((l) => l.trim().toLowerCase() === learnerSkillLevel);
+    let tier = 0;
+    if (hasInst && hasLevel) tier = 3;
+    else if (hasInst) tier = 2;
+    else if (hasLevel) tier = 1;
+    return { row, tier };
+  });
 
-   const sorted = scored
-      .filter((x) => x.tier > 0)
-      .sort((a, b) => {
-         if (b.tier !== a.tier) return b.tier - a.tier;
-         return b.row.doc.rating - a.row.doc.rating;
-      })
-      .map((x) => x.row);
+  const sorted = scored
+    .filter((x) => x.tier > 0)
+    .sort((a, b) => {
+      if (b.tier !== a.tier) return b.tier - a.tier;
+      return b.row.doc.rating - a.row.doc.rating;
+    })
+    .map((x) => x.row);
 
-   const dedup: InstructorDirectoryRow[] = [];
-   const seen = new Set<string>();
-   for (const r of sorted) {
-      if (seen.has(r.id)) continue;
-      seen.add(r.id);
-      dedup.push(r);
-      if (dedup.length >= max) break;
-   }
-   return dedup;
+  const dedup: InstructorDirectoryRow[] = [];
+  const seen = new Set<string>();
+  for (const r of sorted) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    dedup.push(r);
+    if (dedup.length >= max) break;
+  }
+  return dedup;
 }
 
 function useCount(target: number, durationMs = 900) {
-   const [n, setN] = useState(0);
-   useEffect(() => {
-      const start = performance.now();
-      let raf = 0;
-      const tick = (t: number) => {
-         const p = Math.min(1, (t - start) / durationMs);
-         const eased = 1 - Math.pow(1 - p, 3);
-         setN(Math.round(target * eased));
-         if (p < 1) raf = requestAnimationFrame(tick);
-      };
-      raf = requestAnimationFrame(tick);
-      return () => cancelAnimationFrame(raf);
-   }, [target, durationMs]);
-   return n;
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const start = performance.now();
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / durationMs);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setN(Math.round(target * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, durationMs]);
+  return n;
 }
 
-type ReportData = {
-   instrument: string;
-   overallScore: number;
-   dimensionScores: Record<string, number>;
-   weaknesses: string[];
-   status: string;
+type ReportComparison = {
+  reference_id?: string;
+  note_accuracy?: number;
+  timing_accuracy?: number;
+  missed_notes?: number;
+  extra_notes?: number;
+  total_reference_notes?: number;
+  [key: string]: unknown;
 };
 
-function ResultPage() {
-   const nav = useNavigate();
-   const { reportId } = Route.useSearch();
-   const [report, setReport] = useState<ReportData | null>(null);
-   const [loading, setLoading] = useState(true);
-   const { user, userDoc } = useAuth();
-   const { user: liveUserDoc } = useFirestoreUserDoc(user?.uid ?? null);
-   const learnerProfile = liveUserDoc ?? userDoc;
-   const learnerSkillLevel =
-      learnerProfile?.role === "learner" ? learnerProfile.skillLevel : undefined;
-   const { rows: instructorRows, loading: instructorsLoading, error: instructorsError } = useInstructorsDirectory();
+type ReportData = {
+  instrument: string;
+  overallScore: number;
+  dimensionScores: Record<string, number>;
+  weaknesses: string[];
+  status: string;
+  comparison?: ReportComparison;
+  comparisonError?: string;
+};
 
-   const suggestedInstructors = useMemo(() => {
-      if (!report || report.status === "error") return [];
-      return getSuggestedInstructors(instructorRows, report.instrument, learnerSkillLevel, 6);
-   }, [instructorRows, report, learnerSkillLevel]);
-
-   useEffect(() => {
-      if (!reportId) {
-         setLoading(false);
-         return;
-      }
-      const db = getFirestoreDb();
-      const unsub = onSnapshot(doc(db, "reports", reportId), (snap) => {
-         if (!snap.exists()) return;
-         const d = snap.data();
-         if (d.status === "done" || d.status === "error") {
-            setReport({
-               instrument: d.instrument ?? "Unknown",
-               overallScore: d.overallScore ?? 0,
-               dimensionScores: d.dimensionScores ?? {},
-               weaknesses: d.weaknesses ?? [],
-               status: d.status,
-            });
-            setLoading(false);
-         }
-      });
-      return unsub;
-   }, [reportId]);
-
-   const score = useCount(report?.overallScore ?? 0);
-
-   if (loading) {
-      return (
-         <AppShell>
-            <div className="flex min-h-[80vh] flex-col items-center justify-center gap-4">
-               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-               <p className="text-sm text-muted-foreground">Analyzing your recording…</p>
-            </div>
-         </AppShell>
-      );
-   }
-
-   if (!report || report.status === "error") {
-      return (
-         <AppShell>
-            <div className="flex min-h-[80vh] flex-col items-center justify-center gap-4 px-8 text-center">
-               <p className="text-lg font-semibold">Analysis unavailable</p>
-               <p className="text-sm text-muted-foreground">Something went wrong. Try recording again.</p>
-               <Pill size="lg" onClick={() => nav({ to: "/app/analyze" })}>
-                  Try again
-               </Pill>
-            </div>
-         </AppShell>
-      );
-   }
-
-   return (
-      <AppShell>
-         <header className="flex items-center justify-between px-5 pt-6">
-            <button
-               onClick={() => nav({ to: "/app/analyze" })}
-               className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-hairline"
-            >
-               <ArrowLeft className="h-4 w-4" />
-            </button>
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Analysis</p>
-            <div className="w-10" />
-         </header>
-
-         <motion.div
-            className="px-5 pt-6 text-center"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-         >
-            <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Overall score</p>
-            <p className="mt-2 text-[96px] font-extrabold leading-none tracking-tighter tabular-nums">{score}</p>
-            <p className="mt-1 text-xs text-muted-foreground">/ 100 · {report.instrument}</p>
-         </motion.div>
-
-         <section className="px-5 pt-8">
-            <h2 className="mb-3 text-sm font-semibold tracking-tight">By dimension</h2>
-            <Card className="space-y-4 p-5">
-               {dimensionLabels.map((d) => (
-                  <ScoreBar key={d.key} label={d.label} value={report.dimensionScores[d.key] ?? 0} animate />
-               ))}
-            </Card>
-         </section>
-
-         {report.weaknesses.length > 0 && (
-            <section className="px-5 pt-6">
-               <h2 className="mb-3 text-sm font-semibold tracking-tight">Weaknesses</h2>
-               <Card className="p-5">
-                  <ul className="space-y-2.5 text-sm">
-                     {report.weaknesses.map((w, i) => (
-                        <li key={i} className="flex gap-2">
-                           <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-foreground" />
-                           <span>{w}</span>
-                        </li>
-                     ))}
-                  </ul>
-               </Card>
-            </section>
-         )}
-
-         <div className="px-5 pt-6">
-            <ConversationProvider>
-               <TuneCoachCard />
-            </ConversationProvider>
-         </div>
-
-         <section className="px-5 pt-8">
-            <h2 className="mb-1 text-sm font-semibold tracking-tight">Suggested instructors based on your weaknesses</h2>
-            <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
-               Instructors here teach the same instrument as this take ({report.instrument})
-               {learnerSkillLevel ? (
-                  <>
-                     {" "}
-                     or list your level ({learnerSkillLevelLabel(learnerSkillLevel)}) in their profile.
-                  </>
-               ) : (
-                  <> — add your skill level in profile setup to also match by level.</>
-               )}
-            </p>
-
-            {instructorsLoading ? (
-               <Card className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Finding instructors…
-               </Card>
-            ) : instructorsError ? (
-               <Card className="p-5 text-center text-sm text-muted-foreground">{instructorsError}</Card>
-            ) : suggestedInstructors.length === 0 ? (
-               <Card className="p-5 text-center text-sm text-muted-foreground">
-                  No directory matches for this instrument and level yet. You can still browse everyone.
-               </Card>
-            ) : (
-               <div className="grid gap-3 sm:grid-cols-2">
-                  {suggestedInstructors.map(({ id, doc: instructor }) => (
-                     <Link
-                        key={id}
-                        to="/app/instructors/$id"
-                        params={{ id }}
-                        className="block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                     >
-                        <Card className="flex gap-3 p-4 transition-colors hover:bg-muted/40">
-                           <Avatar
-                              initials={initialsFromName(instructor.fullName)}
-                              src={instructor.avatarUrl}
-                              size={52}
-                              className="shrink-0"
-                           />
-                           <div className="min-w-0 flex-1 text-left">
-                              <p className="truncate font-semibold leading-tight">{instructor.fullName}</p>
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                 {instructor.hourlyRate === 0 ? "Free" : `$${instructor.hourlyRate}/hr`}
-                                 <span className="mx-1.5 text-muted-foreground/50">·</span>
-                                 <span className="inline-flex items-center gap-0.5">
-                                    <Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden />
-                                    {instructor.rating.toFixed(1)}
-                                 </span>
-                              </p>
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                 {instructor.specialties.slice(0, 3).map((sp) => (
-                                    <span
-                                       key={sp}
-                                       className="rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
-                                    >
-                                       {formatSpecialtyLabel(sp)}
-                                    </span>
-                                 ))}
-                              </div>
-                              {(instructor.teachingLevels ?? []).length > 0 && (
-                                 <div className="mt-1.5 flex flex-wrap gap-1">
-                                    {(instructor.teachingLevels ?? []).slice(0, 3).map((lvl) => (
-                                       <span
-                                          key={lvl}
-                                          className="rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] text-muted-foreground"
-                                       >
-                                          {formatTeachingLevelBadge(lvl)}
-                                       </span>
-                                    ))}
-                                 </div>
-                              )}
-                           </div>
-                        </Card>
-                     </Link>
-                  ))}
-               </div>
-            )}
-         </section>
-
-         <div className="px-5 pt-5 pb-10">
-            <Link to="/app/instructors" className="block">
-               <Pill size="lg" className="w-full">
-                  Browse all instructors
-                  <ArrowRight className="h-4 w-4" />
-               </Pill>
-            </Link>
-         </div>
-      </AppShell>
-   );
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
 }
 
-function TuneCoachCard() {
-   const conversation = useConversation({
-      onConnect: () => console.log("TuneCoach connected"),
-      onDisconnect: () => console.log("TuneCoach disconnected"),
-      onError: (error) => console.error("TuneCoach error:", error),
-   });
+function toRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
 
-   const isConnected = conversation.status === "connected";
-   const isConnecting = conversation.status === "connecting";
+function normalizeScores(value: unknown): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(toRecord(value)).map(([key, score]) => [key, toNumber(score)]),
+  );
+}
 
-   const handleToggleCoach = async () => {
-      if (isConnected) {
-         conversation.endSession();
-         return;
+function normalizeWeaknesses(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+}
+
+function normalizeComparison(value: unknown): ReportComparison | undefined {
+  const record = toRecord(value);
+  return Object.keys(record).length ? (record as ReportComparison) : undefined;
+}
+
+function ResultPage() {
+  const nav = useNavigate();
+  const { reportId } = Route.useSearch();
+  const [report, setReport] = useState<ReportData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { user, userDoc } = useAuth();
+  const { user: liveUserDoc } = useFirestoreUserDoc(user?.uid ?? null);
+  const learnerProfile = liveUserDoc ?? userDoc;
+  const learnerSkillLevel =
+    learnerProfile?.role === "learner" ? learnerProfile.skillLevel : undefined;
+  const {
+    rows: instructorRows,
+    loading: instructorsLoading,
+    error: instructorsError,
+  } = useInstructorsDirectory();
+
+  const suggestedInstructors = useMemo(() => {
+    if (!report || report.status === "error") return [];
+    return getSuggestedInstructors(instructorRows, report.instrument, learnerSkillLevel, 6);
+  }, [instructorRows, report, learnerSkillLevel]);
+
+  useEffect(() => {
+    if (!reportId) {
+      setLoading(false);
+      return;
+    }
+    const db = getFirestoreDb();
+    const unsub = onSnapshot(doc(db, "reports", reportId), (snap) => {
+      if (!snap.exists()) return;
+      const d = snap.data();
+      if (d.status === "done" || d.status === "error") {
+        setReport({
+          instrument: typeof d.instrument === "string" ? d.instrument : "Unknown",
+          overallScore: toNumber(d.overallScore ?? d.overall_score),
+          dimensionScores: normalizeScores(d.dimensionScores ?? d.dimension_scores),
+          weaknesses: normalizeWeaknesses(d.weaknesses),
+          status: typeof d.status === "string" ? d.status : "done",
+          comparison: normalizeComparison(d.comparison),
+          comparisonError: typeof d.comparison_error === "string" ? d.comparison_error : undefined,
+        });
+        setLoading(false);
       }
+    });
+    return unsub;
+  }, [reportId]);
 
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      conversation.startSession({ agentId: "agent_3001kph9exayf6etsbvvqm759djj" });
-   };
+  const score = useCount(report?.overallScore ?? 0);
 
-   return (
-      <Card className="p-5 text-center">
-         <p className="mb-1 text-sm font-semibold">Talk to TuneCoach</p>
-         <p className="mb-4 text-xs text-muted-foreground">
-            {isConnected ? (conversation.isSpeaking ? "TuneCoach is speaking..." : "Listening...") : "Ask your AI coach about your results"}
-         </p>
-         <button
-            onClick={handleToggleCoach}
-            disabled={isConnecting}
-            className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full transition-all ${
-               isConnected ? "bg-red-500 text-white" : "bg-foreground text-background"
-            }`}
-         >
-            {isConnecting ? (
-               <Loader2 className="h-6 w-6 animate-spin" />
-            ) : isConnected ? (
-               <MicOff className="h-6 w-6" />
-            ) : (
-               <Mic className="h-6 w-6" />
-            )}
-         </button>
-         {isConnected && <p className="mt-3 text-xs text-red-500">Tap to end session</p>}
-      </Card>
-   );
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="flex min-h-[80vh] flex-col items-center justify-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Analyzing your recording...</p>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!report || report.status === "error") {
+    return (
+      <AppShell>
+        <div className="flex min-h-[80vh] flex-col items-center justify-center gap-4 px-8 text-center">
+          <p className="text-lg font-semibold">Analysis unavailable</p>
+          <p className="text-sm text-muted-foreground">
+            Something went wrong. Try recording again.
+          </p>
+          <Pill size="lg" onClick={() => nav({ to: "/app/analyze" })}>
+            Try again
+          </Pill>
+        </div>
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell>
+      <header className="flex items-center justify-between px-5 pt-6">
+        <button
+          onClick={() => nav({ to: "/app/analyze" })}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-hairline"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Analysis</p>
+        <div className="w-10" />
+      </header>
+
+      <motion.div
+        className="px-5 pt-6 text-center"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+      >
+        <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Overall score</p>
+        <p className="mt-2 text-[96px] font-extrabold leading-none tracking-tighter tabular-nums">
+          {score}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">/ 100 - {report.instrument}</p>
+      </motion.div>
+
+      <section className="px-5 pt-8">
+        <h2 className="mb-3 text-sm font-semibold tracking-tight">By dimension</h2>
+        <Card className="space-y-4 p-5">
+          {dimensionLabels.map((d) => (
+            <ScoreBar
+              key={d.key}
+              label={d.label}
+              value={report.dimensionScores[d.key] ?? 0}
+              animate
+            />
+          ))}
+        </Card>
+      </section>
+
+      {report.weaknesses.length > 0 && (
+        <section className="px-5 pt-6">
+          <h2 className="mb-3 text-sm font-semibold tracking-tight">Weaknesses</h2>
+          <Card className="p-5">
+            <ul className="space-y-2.5 text-sm">
+              {report.weaknesses.map((w, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-foreground" />
+                  <span>{w}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </section>
+      )}
+
+      <div className="px-5 pt-6">
+        <TuneCoachCard report={report} />
+      </div>
+
+      <section className="px-5 pt-8">
+        <h2 className="mb-1 text-sm font-semibold tracking-tight">
+          Suggested instructors based on your weaknesses
+        </h2>
+        <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
+          Instructors here teach the same instrument as this take ({report.instrument})
+          {learnerSkillLevel
+            ? ` or list your level (${learnerSkillLevelLabel(learnerSkillLevel)}) in their profile.`
+            : " or add your skill level in profile setup to also match by level."}
+        </p>
+
+        {instructorsLoading ? (
+          <Card className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Finding instructors...
+          </Card>
+        ) : instructorsError ? (
+          <Card className="p-5 text-center text-sm text-muted-foreground">{instructorsError}</Card>
+        ) : suggestedInstructors.length === 0 ? (
+          <Card className="p-5 text-center text-sm text-muted-foreground">
+            No directory matches for this instrument and level yet. You can still browse everyone.
+          </Card>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {suggestedInstructors.map(({ id, doc: instructor }) => (
+              <Link
+                key={id}
+                to="/app/instructors/$id"
+                params={{ id }}
+                className="block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                <Card className="flex gap-3 p-4 transition-colors hover:bg-muted/40">
+                  <Avatar
+                    initials={initialsFromName(instructor.fullName)}
+                    src={instructor.avatarUrl}
+                    size={52}
+                    className="shrink-0"
+                  />
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="truncate font-semibold leading-tight">{instructor.fullName}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {instructor.hourlyRate === 0 ? "Free" : `$${instructor.hourlyRate}/hr`}
+                      <span className="mx-1.5 text-muted-foreground/50">-</span>
+                      <span className="inline-flex items-center gap-0.5">
+                        <Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden />
+                        {instructor.rating.toFixed(1)}
+                      </span>
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {instructor.specialties.slice(0, 3).map((sp) => (
+                        <span
+                          key={sp}
+                          className="rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                        >
+                          {formatSpecialtyLabel(sp)}
+                        </span>
+                      ))}
+                    </div>
+                    {(instructor.teachingLevels ?? []).length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {(instructor.teachingLevels ?? []).slice(0, 3).map((lvl) => (
+                          <span
+                            key={lvl}
+                            className="rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] text-muted-foreground"
+                          >
+                            {formatTeachingLevelBadge(lvl)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <div className="px-5 pt-5 pb-10">
+        <Link to="/app/instructors" className="block">
+          <Pill size="lg" className="w-full">
+            Browse all instructors
+            <ArrowRight className="h-4 w-4" />
+          </Pill>
+        </Link>
+      </div>
+    </AppShell>
+  );
+}
+
+function formatMetricName(metric: string): string {
+  return metric.replace(/_/g, " ");
+}
+
+function buildReportSummary(report: ReportData): string {
+  const dims = Object.entries(report.dimensionScores)
+    .map(([key, value]) => `${formatMetricName(key)}: ${value}/100`)
+    .join(", ");
+  const weak = report.weaknesses.length ? report.weaknesses.join("; ") : "none";
+  const comparison = report.comparison
+    ? Object.entries(report.comparison)
+        .filter(([, value]) => value !== undefined && value !== null)
+        .map(([key, value]) => `${formatMetricName(key)}: ${String(value)}`)
+        .join(", ")
+    : "not available";
+
+  return [
+    `Instrument: ${report.instrument}`,
+    `Overall score: ${report.overallScore}/100`,
+    `Dimension scores: ${dims || "not available"}`,
+    `Weaknesses: ${weak}`,
+    `Essentia reference comparison: ${comparison}`,
+    report.comparisonError ? `Comparison note: ${report.comparisonError}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function TuneCoachCard({ report }: { report: ReportData }) {
+  const [input, setInput] = useState("");
+  const [listening, setListening] = useState(false);
+  const [speakingKey, setSpeakingKey] = useState<string | null>(null);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const speechRequestRef = useRef(0);
+  const reportSummary = buildReportSummary(report);
+
+  const { messages, connected, connecting, error, connect, send } = useTextChat(
+    AGENT_ID,
+    reportSummary,
+  );
+
+  const clearSpeech = useCallback(() => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+    setSpeakingKey(null);
+  }, []);
+
+  const stopSpeech = useCallback(() => {
+    speechRequestRef.current += 1;
+    clearSpeech();
+  }, [clearSpeech]);
+
+  useEffect(() => {
+    void connect();
+  }, [connect]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => stopSpeech, [stopSpeech]);
+
+  const playAgentMessage = async (text: string, key: string) => {
+    if (speakingKey === key) {
+      stopSpeech();
+      return;
+    }
+
+    setSpeechError(null);
+    stopSpeech();
+    const requestId = speechRequestRef.current;
+    setSpeakingKey(key);
+
+    try {
+      const speech = await synthesizeTuneCoachSpeech(text);
+      if (speechRequestRef.current !== requestId) return;
+
+      const bytes = Uint8Array.from(atob(speech.audioBase64), (char) => char.charCodeAt(0));
+      const blob = new Blob([bytes], { type: speech.mimeType || "audio/mpeg" });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+
+      audioRef.current = audio;
+      audioUrlRef.current = url;
+      audio.onended = () => {
+        if (speechRequestRef.current === requestId) clearSpeech();
+      };
+      audio.onerror = () => {
+        if (speechRequestRef.current !== requestId) return;
+        setSpeechError("TuneCoach audio could not be played.");
+        clearSpeech();
+      };
+
+      await audio.play();
+    } catch (e) {
+      if (speechRequestRef.current !== requestId) return;
+      setSpeechError(e instanceof Error ? e.message : "TuneCoach audio could not be generated.");
+      clearSpeech();
+    }
+  };
+
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text || connecting) return;
+
+    setInput("");
+    const sent = await send(text);
+    if (!sent) setInput(text);
+  };
+
+  const handleVoiceInput = () => {
+    type SRConstructor = new () => {
+      continuous: boolean;
+      interimResults: boolean;
+      lang: string;
+      onstart: (() => void) | null;
+      onend: (() => void) | null;
+      onresult:
+        | ((e: { results: { [i: number]: { [i: number]: { transcript: string } } } }) => void)
+        | null;
+      start: () => void;
+      stop: () => void;
+    };
+    const w = window as unknown as {
+      SpeechRecognition?: SRConstructor;
+      webkitSpeechRecognition?: SRConstructor;
+    };
+    const SR: SRConstructor | undefined = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SR || connecting) return;
+
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const rec = new SR();
+    recognitionRef.current = rec;
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = "en-US";
+
+    rec.onstart = () => setListening(true);
+    rec.onend = () => setListening(false);
+    rec.onresult = (e) => {
+      const transcript = e.results[0][0].transcript.trim();
+      if (transcript) {
+        setInput("");
+        void send(transcript);
+      }
+    };
+    rec.start();
+  };
+
+  return (
+    <Card className="p-5">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold">TuneCoach</p>
+        <span className="rounded-full border border-hairline px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {connected ? "Live" : connecting ? "Connecting" : "Offline"}
+        </span>
+      </div>
+
+      <div className="flex h-56 flex-col gap-2 overflow-y-auto pr-1">
+        {connecting && (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
+        {error && (
+          <div className="rounded-lg border border-hairline px-3 py-2 text-xs text-muted-foreground">
+            {error}
+          </div>
+        )}
+        {speechError && (
+          <div className="rounded-lg border border-hairline px-3 py-2 text-xs text-muted-foreground">
+            {speechError}
+          </div>
+        )}
+        {!connecting && !error && messages.length === 0 && (
+          <p className="py-6 text-center text-xs text-muted-foreground">
+            Preparing feedback from your report...
+          </p>
+        )}
+        {messages.map((m, i) => {
+          const messageKey = `${m.role}-${i}`;
+          const isSpeaking = speakingKey === messageKey;
+
+          return (
+            <div
+              key={messageKey}
+              className={`flex items-end gap-2 ${
+                m.role === "user" ? "justify-end" : "justify-start"
+              }`}
+            >
+              <span
+                className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                  m.role === "user" ? "bg-foreground text-background" : "bg-muted text-foreground"
+                }`}
+              >
+                {m.text}
+              </span>
+              {m.role === "agent" && (
+                <button
+                  type="button"
+                  onClick={() => void playAgentMessage(m.text, messageKey)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-hairline text-foreground transition-colors disabled:opacity-40"
+                  aria-label={isSpeaking ? "Stop TuneCoach audio" : "Speak TuneCoach response"}
+                  title={isSpeaking ? "Stop audio" : "Speak response"}
+                >
+                  {isSpeaking ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Volume2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              )}
+            </div>
+          );
+        })}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void handleSend();
+            }
+          }}
+          placeholder={connecting ? "Connecting to TuneCoach..." : "Ask your coach..."}
+          className="flex-1 rounded-full border border-hairline bg-transparent px-4 py-2 text-xs outline-none placeholder:text-muted-foreground"
+        />
+        <button
+          onClick={handleVoiceInput}
+          disabled={connecting}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+            listening ? "bg-red-500 text-white" : "border border-hairline text-foreground"
+          }`}
+        >
+          <Mic className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => void handleSend()}
+          disabled={!input.trim() || connecting}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background disabled:opacity-40"
+        >
+          <Send className="h-4 w-4" />
+        </button>
+      </div>
+    </Card>
+  );
 }

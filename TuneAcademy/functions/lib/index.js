@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.analyzeRecording = exports.createGoogleMeetLinksForEngagement = exports.getGoogleCalendarConnectionStatus = exports.googleCalendarOAuthCallback = exports.createGoogleCalendarAuthUrl = void 0;
+exports.analyzeRecording = exports.synthesizeTuneCoachSpeech = exports.createGoogleMeetLinksForEngagement = exports.getGoogleCalendarConnectionStatus = exports.googleCalendarOAuthCallback = exports.createGoogleCalendarAuthUrl = void 0;
 const crypto_1 = require("crypto");
 const storage_1 = require("firebase-functions/v2/storage");
 const https_1 = require("firebase-functions/v2/https");
@@ -9,7 +9,10 @@ const firestore_1 = require("firebase-admin/firestore");
 const storage_2 = require("firebase-admin/storage");
 (0, app_1.initializeApp)();
 const REGION = "us-east1";
-const GOOGLE_CALENDAR_SCOPE = ["https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/userinfo.email"].join(" ");
+const GOOGLE_CALENDAR_SCOPE = [
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/userinfo.email",
+].join(" ");
 function requiredEnv(name) {
     const value = process.env[name]?.trim();
     if (!value)
@@ -18,6 +21,10 @@ function requiredEnv(name) {
 }
 function redirectAppOrigin() {
     return process.env.APP_ORIGIN?.trim() || "http://localhost:5173";
+}
+function optionalEnv(name) {
+    const value = process.env[name]?.trim();
+    return value || undefined;
 }
 function oauthConfig() {
     return {
@@ -67,7 +74,10 @@ async function refreshGoogleAccessToken(uid, connection) {
 function timestampToDate(value) {
     if (value instanceof firestore_1.Timestamp)
         return value.toDate();
-    if (value && typeof value === "object" && "toDate" in value && typeof value.toDate === "function") {
+    if (value &&
+        typeof value === "object" &&
+        "toDate" in value &&
+        typeof value.toDate === "function") {
         const out = value.toDate();
         return out instanceof Date ? out : null;
     }
@@ -83,7 +93,10 @@ exports.createGoogleCalendarAuthUrl = (0, https_1.onCall)({ region: REGION }, as
         throw new https_1.HttpsError("unauthenticated", "Sign in before connecting Google Calendar.");
     const { clientId, redirectUri } = oauthConfig();
     const state = (0, crypto_1.randomUUID)();
-    await (0, firestore_1.getFirestore)().collection("googleCalendarOAuthStates").doc(state).set({ uid, createdAt: firestore_1.FieldValue.serverTimestamp() });
+    await (0, firestore_1.getFirestore)()
+        .collection("googleCalendarOAuthStates")
+        .doc(state)
+        .set({ uid, createdAt: firestore_1.FieldValue.serverTimestamp() });
     const params = new URLSearchParams({
         client_id: clientId,
         redirect_uri: redirectUri,
@@ -130,7 +143,9 @@ exports.googleCalendarOAuthCallback = (0, https_1.onRequest)({ region: REGION },
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body,
         }));
-        const profile = await readJsonResponse(await fetch("https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: `Bearer ${token.access_token}` } }));
+        const profile = await readJsonResponse(await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+            headers: { Authorization: `Bearer ${token.access_token}` },
+        }));
         await db
             .collection("googleCalendarConnections")
             .doc(uid)
@@ -209,9 +224,14 @@ exports.createGoogleMeetLinksForEngagement = (0, https_1.onCall)({ region: REGIO
             description: "TuneAcademy protected lesson. Join from TuneAcademy so scheduling, payment, and attendance stay together.",
             start: { dateTime: startAt.toISOString() },
             end: { dateTime: endAt.toISOString() },
-            attendees: learnerEmail ? [{ email: learnerEmail, displayName: learner?.fullName ?? "Student" }] : [],
+            attendees: learnerEmail
+                ? [{ email: learnerEmail, displayName: learner?.fullName ?? "Student" }]
+                : [],
             conferenceData: {
-                createRequest: { requestId: `ta-${engagementId}-${sessionIndex}`, conferenceSolutionKey: { type: "hangoutsMeet" } },
+                createRequest: {
+                    requestId: `ta-${engagementId}-${sessionIndex}`,
+                    conferenceSolutionKey: { type: "hangoutsMeet" },
+                },
             },
             guestsCanInviteOthers: false,
             guestsCanModify: false,
@@ -238,6 +258,45 @@ exports.createGoogleMeetLinksForEngagement = (0, https_1.onCall)({ region: REGIO
         created++;
     }
     return { created, skipped };
+});
+exports.synthesizeTuneCoachSpeech = (0, https_1.onCall)({ region: REGION }, async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid)
+        throw new https_1.HttpsError("unauthenticated", "Sign in before using TuneCoach audio.");
+    const text = String(request.data?.text ?? "").trim();
+    if (!text)
+        throw new https_1.HttpsError("invalid-argument", "Missing text to speak.");
+    if (text.length > 1400) {
+        throw new https_1.HttpsError("invalid-argument", "TuneCoach audio is limited to 1400 characters.");
+    }
+    const apiKey = requiredEnv("ELEVENLABS_API_KEY");
+    const voiceId = optionalEnv("ELEVENLABS_TTS_VOICE_ID") ||
+        optionalEnv("ELEVENLABS_VOICE_ID") ||
+        "JBFqnCBsd6RMkjVDRZzb";
+    const modelId = optionalEnv("ELEVENLABS_TTS_MODEL_ID") || "eleven_multilingual_v2";
+    const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
+    const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "xi-api-key": apiKey,
+        },
+        body: JSON.stringify({
+            text,
+            model_id: modelId,
+        }),
+    });
+    if (!resp.ok) {
+        const detail = await resp.text().catch(() => "");
+        throw new https_1.HttpsError("internal", detail
+            ? `ElevenLabs TTS failed: ${detail.slice(0, 300)}`
+            : `ElevenLabs TTS failed with ${resp.status}.`);
+    }
+    const audioBase64 = Buffer.from(await resp.arrayBuffer()).toString("base64");
+    return {
+        audioBase64,
+        mimeType: "audio/mpeg",
+    };
 });
 exports.analyzeRecording = (0, storage_1.onObjectFinalized)({ region: REGION }, async (event) => {
     const name = event.data.name;
@@ -276,19 +335,31 @@ exports.analyzeRecording = (0, storage_1.onObjectFinalized)({ region: REGION }, 
         await reportRef.update({ status: "error", error: String(err) });
         return;
     }
-    const overall = Math.round((result.pitch_centre + result.pitch_stability + result.rhythm + result.tone_quality + result.note_attack) / 5);
+    const dimensionScores = {
+        pitch_centre: Number(result.dimension_scores?.pitch_centre ?? 0),
+        pitch_stability: Number(result.dimension_scores?.pitch_stability ?? 0),
+        rhythm: Number(result.dimension_scores?.rhythm ?? 0),
+        tone_quality: Number(result.dimension_scores?.tone_quality ?? 0),
+        note_attack: Number(result.dimension_scores?.note_attack ?? 0),
+    };
+    const computedOverall = Math.round((dimensionScores.pitch_centre +
+        dimensionScores.pitch_stability +
+        dimensionScores.rhythm +
+        dimensionScores.tone_quality +
+        dimensionScores.note_attack) /
+        5);
+    const overall = Number.isFinite(result.overall_score)
+        ? Number(result.overall_score)
+        : computedOverall;
     await reportRef.update({
         status: "done",
+        overallScore: overall,
+        dimensionScores,
         overall_score: overall,
-        dimension_scores: {
-            pitch_centre: result.pitch_centre,
-            pitch_stability: result.pitch_stability,
-            rhythm: result.rhythm,
-            tone_quality: result.tone_quality,
-            note_attack: result.note_attack,
-        },
-        weaknesses: result.weaknesses,
+        dimension_scores: dimensionScores,
+        weaknesses: Array.isArray(result.weaknesses) ? result.weaknesses : [],
         ...(result.comparison ? { comparison: result.comparison } : {}),
+        ...(result.comparison_error ? { comparison_error: result.comparison_error } : {}),
         analyzedAt: new Date(),
     });
     console.log(`Report ${recordingId} for user ${userId} written with score ${overall}`);
