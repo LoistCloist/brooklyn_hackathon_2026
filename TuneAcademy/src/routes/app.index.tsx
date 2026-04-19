@@ -13,6 +13,7 @@ import {
 import { timestampToMillis } from "@/lib/scheduling";
 import { brandTheme } from "@/lib/theme";
 import { subscribeEngagementsForUser, subscribePendingRequestCount, type TutoringEngagementDoc } from "@/lib/tutoringFirestore";
+import { engagementMeetSessionKey, useEngagementMeetSessionsMap } from "@/hooks/useEngagementMeetSessionsMap";
 import { useNextJoinableHomeMeeting } from "@/hooks/useNextJoinableHomeMeeting";
 import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
 import { ArrowRight, Bell, CalendarDays, DollarSign, Flame, LogOut, Mic, Sparkles, Star, TrendingUp, Trophy, Users } from "lucide-react";
@@ -115,6 +116,7 @@ function HomeTab() {
    }, [isInstructor, user?.uid]);
 
    const nextMeeting = useNextJoinableHomeMeeting(engagementRows);
+   const meetSessionsByKey = useEngagementMeetSessionsMap(isInstructor ? engagementRows : null);
 
    const learnerBudget = useMemo(() => {
       if (userDoc?.role !== "learner") return null;
@@ -135,29 +137,31 @@ function HomeTab() {
    const instructorTotalEarned = useMemo(() => {
       if (!isInstructor || !instructorDocSnap) return 0;
       const rate = instructorDocSnap.hourlyRate ?? 0;
-      const now = Date.now();
-      let ms = 0;
-      for (const { data } of engagementRows) {
-         for (const m of data.meetings) {
+      let total = 0;
+      for (const { id, data } of engagementRows) {
+         for (let sessionIndex = 0; sessionIndex < data.meetings.length; sessionIndex++) {
+            const sess = meetSessionsByKey[engagementMeetSessionKey(id, sessionIndex)];
+            if (sess?.sessionCompletedAt == null) continue;
+            const m = data.meetings[sessionIndex];
+            if (!m) continue;
             const s = timestampToMillis(m.startAt);
             const e = timestampToMillis(m.endAt);
             if (s == null || e == null) continue;
-            if (e > now) continue;
-            ms += Math.max(0, e - s);
+            const hours = Math.max(0, (e - s) / 3_600_000);
+            total += Math.round(hours * rate * 100) / 100;
          }
       }
-      return (ms / 3_600_000) * rate;
-   }, [isInstructor, engagementRows, instructorDocSnap]);
+      return total;
+   }, [isInstructor, engagementRows, instructorDocSnap, meetSessionsByKey]);
 
    const instructorLeaderboard = useMemo(() => {
       if (!isInstructor) return [];
-      const now = Date.now();
       const byLearner = new Map<string, number>();
-      for (const { data } of engagementRows) {
+      for (const { id, data } of engagementRows) {
          let n = 0;
-         for (const m of data.meetings) {
-            const e = timestampToMillis(m.endAt);
-            if (e != null && e <= now) n++;
+         for (let sessionIndex = 0; sessionIndex < data.meetings.length; sessionIndex++) {
+            const sess = meetSessionsByKey[engagementMeetSessionKey(id, sessionIndex)];
+            if (sess?.sessionCompletedAt != null) n++;
          }
          byLearner.set(data.learnerId, (byLearner.get(data.learnerId) ?? 0) + n);
       }
@@ -165,7 +169,7 @@ function HomeTab() {
          .map(([learnerId, completedSessions]) => ({ learnerId, completedSessions }))
          .filter((row) => row.completedSessions > 0)
          .sort((a, b) => b.completedSessions - a.completedSessions);
-   }, [isInstructor, engagementRows]);
+   }, [isInstructor, engagementRows, meetSessionsByKey]);
 
    useEffect(() => {
       if (!isInstructor || instructorLeaderboard.length === 0) {
@@ -279,7 +283,7 @@ function HomeTab() {
                               <p className={`text-xs font-black uppercase tracking-[0.18em] ${brandTheme.gold}`}>Student leaderboard</p>
                               <h2 className="mt-2 text-2xl font-black">Most sessions together</h2>
                               <p className="mt-1 text-sm font-semibold text-[#e8f4df]/55">
-                                 Ranked by completed meetings across your engagements.
+                                 Ranked by sessions where you and the learner both opened the Meet link.
                               </p>
                            </div>
                            <Trophy className="h-6 w-6 shrink-0 text-[#ffd666]" />
