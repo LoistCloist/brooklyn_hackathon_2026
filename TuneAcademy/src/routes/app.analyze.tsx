@@ -1,5 +1,6 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+﻿import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/tuneacademy/AppShell";
+import { Outlet, useRouterState } from "@tanstack/react-router";
 import { Card } from "@/components/tuneacademy/Card";
 import { Pill } from "@/components/tuneacademy/Pill";
 import { InstrumentIcon } from "@/components/tuneacademy/InstrumentIcon";
@@ -16,7 +17,7 @@ import * as midiPackage from "@tonejs/midi";
 import Soundfont from "soundfont-player";
 
 export const Route = createFileRoute("/app/analyze")({
-   head: () => ({ meta: [{ title: "Analyze — TuneAcademy" }] }),
+   head: () => ({ meta: [{ title: "Analyze â€” TuneAcademy" }] }),
    component: AnalyzeTab,
 });
 
@@ -24,7 +25,7 @@ type ChallengeKey = keyof typeof challenges;
 type Step = "pick-instrument" | "record";
 const Midi = ((midiPackage as any).Midi ?? (midiPackage as any).default?.Midi) as typeof import("@tonejs/midi").Midi;
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface TrackInfo {
    track_id: string;
@@ -45,7 +46,7 @@ interface SongInfo {
    midi_url?: string;
 }
 
-// ── WAV encoding ──────────────────────────────────────────────────────────────
+// â”€â”€ WAV encoding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function writeString(view: DataView, offset: number, str: string) {
    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
@@ -76,7 +77,7 @@ function encodeWav(samples: Float32Array, sampleRate: number): Blob {
    return new Blob([buf], { type: "audio/wav" });
 }
 
-// ── MIDI player ───────────────────────────────────────────────────────────────
+// â”€â”€ MIDI player â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const LOOKAHEAD = 0.3;
 const SCHEDULE_INTERVAL = 100;
@@ -248,7 +249,7 @@ function useMidiPlayer(midiUrl: string | undefined) {
          audioCtxRef.current = ctx;
          await ctx.resume();
 
-         // Collect unique instrument key → soundfont name
+         // Collect unique instrument key â†’ soundfont name
          const instKeys = new Map<string, string>();
          midi.tracks.forEach((track) => {
             if (track.instrument.percussion) return;
@@ -329,7 +330,7 @@ function useMidiPlayer(midiUrl: string | undefined) {
    return { playing, loadingMidi, play, stop };
 }
 
-// ── Inline MIDI section ───────────────────────────────────────────────────────
+// â”€â”€ Inline MIDI section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function SelectedMidiCard({ label, sub, midiUrl, onClear }: { label: string; sub?: string; midiUrl?: string; onClear: () => void }) {
    const { playing, loadingMidi, play } = useMidiPlayer(midiUrl);
@@ -418,14 +419,14 @@ function MidiSection({
 
    const hasSelection = selectedTrack !== null || selectedSong !== null;
    const selectionLabel = selectedTrack
-      ? `${selectedTrack.progression} — ${selectedTrack.key}`
+      ? `${selectedTrack.progression} â€” ${selectedTrack.key}`
       : selectedSong
         ? (selectedSong.title ?? selectedSong.track_id)
         : null;
    const selectionSub = selectedTrack
-      ? `${selectedTrack.style} · ${selectedTrack.tempo} BPM`
+      ? `${selectedTrack.style} Â· ${selectedTrack.tempo} BPM`
       : selectedSong
-        ? `${selectedSong.artist ?? ""}${selectedSong.tempo_bpm ? ` · ${selectedSong.tempo_bpm} BPM` : ""}`
+        ? `${selectedSong.artist ?? ""}${selectedSong.tempo_bpm ? ` Â· ${selectedSong.tempo_bpm} BPM` : ""}`
         : null;
    const selectionMidiUrl = selectedTrack?.midi_url ?? selectedSong?.midi_url;
 
@@ -469,7 +470,7 @@ function MidiSection({
                      type="text"
                      value={query}
                      onChange={(e) => setQuery(e.target.value)}
-                     placeholder="Search by title or artist…"
+                     placeholder="Search by title or artistâ€¦"
                      className="w-full rounded-lg border border-hairline bg-transparent px-4 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/30"
                   />
                )}
@@ -506,10 +507,10 @@ function MidiSection({
                           >
                              <div>
                                 <p className="text-sm font-semibold">
-                                   {track.progression} — {track.key}
+                                   {track.progression} â€” {track.key}
                                 </p>
                                 <p className="mt-0.5 text-xs text-muted-foreground capitalize">
-                                   {track.style} · {track.tempo} BPM
+                                   {track.style} Â· {track.tempo} BPM
                                 </p>
                              </div>
                              <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
@@ -534,8 +535,8 @@ function MidiSection({
                                 <p className="text-sm font-semibold">{song.title ?? song.track_id}</p>
                                 <p className="mt-0.5 text-xs text-muted-foreground">
                                    {song.artist ?? "Unknown artist"}
-                                   {song.tempo_bpm ? ` · ${song.tempo_bpm} BPM` : ""}
-                                   {song.duration_seconds ? ` · ${fmtDuration(song.duration_seconds)}` : ""}
+                                   {song.tempo_bpm ? ` Â· ${song.tempo_bpm} BPM` : ""}
+                                   {song.duration_seconds ? ` Â· ${fmtDuration(song.duration_seconds)}` : ""}
                                 </p>
                              </div>
                              <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
@@ -548,10 +549,11 @@ function MidiSection({
    );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function AnalyzeTab() {
    const navigate = useNavigate();
+   const isResultRoute = useRouterState({ select: (state) => state.location.pathname.startsWith("/app/analyze/result") });
    const [step, setStep] = useState<Step>("pick-instrument");
    const [picked, setPicked] = useState<ChallengeKey | null>(null);
    const [selectedTrack, setSelectedTrack] = useState<TrackInfo | null>(null);
@@ -677,9 +679,9 @@ function AnalyzeTab() {
             wavBlob,
             instrument: c.instrument,
             challenge: selectedTrack
-               ? `${selectedTrack.progression} — ${selectedTrack.key} (${selectedTrack.style}, ${selectedTrack.tempo} BPM)`
+               ? `${selectedTrack.progression} â€” ${selectedTrack.key} (${selectedTrack.style}, ${selectedTrack.tempo} BPM)`
                : selectedSong
-                 ? `${selectedSong.title} — ${selectedSong.artist}`
+                 ? `${selectedSong.title} â€” ${selectedSong.artist}`
                  : c.instrument,
             name: name.trim() || `${c.instrument} take`,
             referenceId: selectedTrack?.track_id ?? selectedSong?.track_id,
@@ -690,41 +692,63 @@ function AnalyzeTab() {
       }
    }
 
-   // ── Pick instrument ──────────────────────────────────────────────────────────
+   if (isResultRoute) {
+      return <Outlet />;
+   }
+
+   // â”€â”€ Pick instrument â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    if (step === "pick-instrument") {
       return (
          <AppShell>
-            <header className="px-5 pt-8 pb-2">
-               <h1 className="text-2xl font-bold tracking-tight">What did you play?</h1>
-               <p className="mt-1 text-sm text-muted-foreground">Choose your instrument to get started.</p>
-            </header>
-            <div className="grid grid-cols-2 gap-3 px-5 pt-4">
-               {(Object.keys(challenges) as ChallengeKey[]).map((k) => {
-                  const c = challenges[k];
-                  return (
-                     <button
-                        key={k}
-                        onClick={() => {
-                           setPicked(k);
-                           setStep("record");
-                        }}
-                        className="text-left"
-                     >
-                        <Card className="flex h-44 flex-col justify-between p-4 transition-colors hover:border-foreground/40">
-                           <div className="flex h-12 w-12 items-center justify-center rounded-full border border-hairline">
-                              <InstrumentIcon instrument={c.instrument} className="h-5 w-5" />
-                           </div>
-                           <p className="text-sm font-semibold">{c.instrument}</p>
-                        </Card>
-                     </button>
-                  );
-               })}
+            <div className="mx-auto w-full max-w-5xl">
+               <header className="px-5 pt-8 pb-2">
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-[#a6eee3]">Analyze</p>
+                  <h1 className="mt-2 text-5xl font-black tracking-normal text-[#fffdf5]">What did you play?</h1>
+                  <p className="mt-2 text-base font-semibold text-[#e8f4df]/62">Choose your instrument to get started.</p>
+               </header>
+               <div className="grid grid-cols-1 gap-4 px-5 pt-4 sm:grid-cols-2">
+                  {(Object.keys(challenges) as ChallengeKey[]).map((k) => {
+                     const c = challenges[k];
+                     return (
+                        <button
+                           key={k}
+                           onClick={() => {
+                              setPicked(k);
+                              setStep("record");
+                           }}
+                           className="group block text-left outline-none"
+                        >
+                           <Card className="relative flex min-h-44 flex-col justify-between overflow-hidden border-[#fffdf5]/16 bg-[#fffdf5]/8 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.18)] backdrop-blur transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-[#ffd666]/45 group-hover:bg-[#fffdf5]/10 group-hover:shadow-[0_24px_70px_rgba(0,0,0,0.26)] group-focus-visible:ring-2 group-focus-visible:ring-[#ffd666]/70 group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-[#0b1510]">
+                              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_88%_18%,rgba(255,214,102,0.16),transparent_34%)] opacity-80" />
+                              <div className="relative flex items-start justify-between gap-4">
+                                 <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#a6eee3]/25 bg-[#a6eee3]/10 text-[#a6eee3] shadow-[0_0_30px_rgba(47,197,181,0.12)]">
+                                    <InstrumentIcon instrument={c.instrument} className="h-5 w-5" />
+                                 </div>
+                                 <span className="rounded-full border border-[#ffd666]/25 bg-[#ffd666]/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#ffd666] opacity-0 transition-opacity group-hover:opacity-100">
+                                    Start
+                                 </span>
+                              </div>
+                              <div className="relative mt-8">
+                                 <p className="text-lg font-black tracking-tight text-[#fffdf5]">{c.instrument}</p>
+                                 <p className="mt-2 max-w-md text-sm font-semibold leading-relaxed text-[#e8f4df]/64">{c.text}</p>
+                              </div>
+                              <div className="relative mt-5 flex items-center justify-between border-t border-[#fffdf5]/10 pt-4">
+                                 <span className="text-[11px] font-black uppercase tracking-[0.2em] text-[#e8f4df]/42">Pitch + timing</span>
+                                 <span className="text-sm font-black text-[#ffd666] transition-transform group-hover:translate-x-1">
+                                    Analyze
+                                 </span>
+                              </div>
+                           </Card>
+                        </button>
+                     );
+                  })}
+               </div>
             </div>
          </AppShell>
       );
    }
 
-   // ── Record + MIDI + Name ─────────────────────────────────────────────────────
+   // â”€â”€ Record + MIDI + Name â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    if (step === "record" && picked) {
       const c = challenges[picked];
       const isGuitar = c.instrument === "Guitar";
@@ -789,7 +813,7 @@ function AnalyzeTab() {
                      type="text"
                      value={name}
                      onChange={(e) => setName(e.target.value)}
-                     placeholder={`${c.instrument} take…`}
+                     placeholder={`${c.instrument} takeâ€¦`}
                      maxLength={60}
                      className="w-full rounded-lg border border-hairline bg-transparent px-4 py-3 text-sm font-semibold placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/30"
                   />
@@ -818,7 +842,9 @@ function AnalyzeTab() {
                {uploading ? (
                   <div className="space-y-2">
                      <Progress value={Math.round(progress * 100)} />
-                     <p className="text-center text-xs text-muted-foreground">Uploading…</p>
+                     <p className="text-center text-xs text-muted-foreground">
+                        {progress >= 1 ? "Analyzing your recording..." : "Uploading..."}
+                     </p>
                   </div>
                ) : (
                   <div className="space-y-2">
