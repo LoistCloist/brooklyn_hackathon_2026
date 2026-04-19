@@ -182,7 +182,8 @@ async def analyze(
                     **comparison.__dict__,
                 }
             except KeyError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
+                print(f"[analyze] reference track not found, skipping comparison: {exc}")
+                result["comparison_error"] = str(exc)
             except Exception as exc:
                 print(f"[analyze] comparison skipped: {exc}")
                 result["comparison_error"] = str(exc)

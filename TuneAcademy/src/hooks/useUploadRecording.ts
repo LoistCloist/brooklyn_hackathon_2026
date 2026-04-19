@@ -54,31 +54,35 @@ export function useUploadRecording(): {
         });
         setProgress(1);
 
-        // Call analyze API and write results back to Firestore
-        try {
-          const form = new FormData();
-          form.append("instrument", args.instrument);
-          form.append("audio", args.wavBlob, "recording.wav");
-          if (args.referenceId) form.append("reference_id", args.referenceId);
+        // Fire-and-forget: call analyze API in the background so we can
+        // navigate to the result page immediately. The result page's
+        // onSnapshot listener will pick up the Firestore update when it lands.
+        void (async () => {
+          try {
+            const form = new FormData();
+            form.append("instrument", args.instrument);
+            form.append("audio", args.wavBlob, "recording.wav");
+            if (args.referenceId) form.append("reference_id", args.referenceId);
 
-          const res = await fetch(ANALYZE_URL, { method: "POST", body: form });
-          if (res.ok) {
-            const analysis = await res.json();
-            await updateDoc(doc(db, "reports", recordingId), {
-              status: "done",
-              overallScore: analysis.overall_score,
-              dimensionScores: analysis.dimension_scores,
-              weaknesses: analysis.weaknesses,
-              ...(analysis.comparison ? { comparison: analysis.comparison } : {}),
-            });
-          } else {
-            const detail = await res.text().catch(() => res.status.toString());
-            await updateDoc(doc(db, "reports", recordingId), { status: "error", error: detail });
+            const res = await fetch(ANALYZE_URL, { method: "POST", body: form });
+            if (res.ok) {
+              const analysis = await res.json();
+              await updateDoc(doc(db, "reports", recordingId), {
+                status: "done",
+                overallScore: analysis.overall_score,
+                dimensionScores: analysis.dimension_scores,
+                weaknesses: analysis.weaknesses,
+                ...(analysis.comparison ? { comparison: analysis.comparison } : {}),
+              });
+            } else {
+              const detail = await res.text().catch(() => res.status.toString());
+              await updateDoc(doc(db, "reports", recordingId), { status: "error", error: detail });
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            await updateDoc(doc(db, "reports", recordingId), { status: "error", error: msg }).catch(() => null);
           }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          await updateDoc(doc(db, "reports", recordingId), { status: "error", error: msg }).catch(() => null);
-        }
+        })();
 
         return recordingId;
       } catch (e) {

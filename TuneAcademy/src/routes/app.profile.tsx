@@ -229,8 +229,7 @@ function ProfileTab() {
       const db = getFirestoreDb();
 
       const allRepQ = query(collection(db, "reports"), where("userId", "==", user.uid), limit(20));
-      void getDocs(allRepQ)
-         .then(async (snap) => {
+      const unsubReports = onSnapshot(allRepQ, async (snap) => {
             if (cancelled) return;
             const storage = getFirebaseStorage();
             const rows: RecordingRow[] = await Promise.all(
@@ -247,7 +246,7 @@ function ProfileTab() {
                      name: data.name || undefined,
                      instrument: data.instrument,
                      challenge: data.challenge,
-                     overallScore: data.overall_score,
+                     overallScore: data.overallScore,
                      status: data.status,
                      createdAt: data.createdAt ?? null,
                      audioUrl,
@@ -263,8 +262,7 @@ function ProfileTab() {
             if (latest) {
                setReport({ instrument: latest.instrument, overallScore: latest.overallScore });
             }
-         })
-         .catch(() => {});
+         });
 
       const reelQ = query(collection(db, "reels"), where("uploaderId", "==", user.uid));
       void getDocs(reelQ)
@@ -282,6 +280,7 @@ function ProfileTab() {
 
       return () => {
          cancelled = true;
+         unsubReports();
       };
    }, [user?.uid, isInstructor]);
 

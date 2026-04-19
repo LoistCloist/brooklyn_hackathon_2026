@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { collection, getDocs } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { Midi } from "@tonejs/midi";
+import Soundfont from "soundfont-player";
 
 export const Route = createFileRoute("/app/analyze")({
   head: () => ({ meta: [{ title: "Analyze — TuneAcademy" }] }),
@@ -76,12 +77,55 @@ function encodeWav(samples: Float32Array, sampleRate: number): Blob {
 
 // ── MIDI player ───────────────────────────────────────────────────────────────
 
+const LOOKAHEAD = 0.3;
+const SCHEDULE_INTERVAL = 100;
+
+const GM_NAMES = [
+  "acoustic_grand_piano","bright_acoustic_piano","electric_grand_piano","honkytonk_piano",
+  "electric_piano_1","electric_piano_2","harpsichord","clavinet",
+  "celesta","glockenspiel","music_box","vibraphone",
+  "marimba","xylophone","tubular_bells","dulcimer",
+  "drawbar_organ","percussive_organ","rock_organ","church_organ",
+  "reed_organ","accordion","harmonica","tango_accordion",
+  "acoustic_guitar_nylon","acoustic_guitar_steel","electric_guitar_jazz","electric_guitar_clean",
+  "electric_guitar_muted","overdriven_guitar","distortion_guitar","guitar_harmonics",
+  "acoustic_bass","electric_bass_finger","electric_bass_pick","fretless_bass",
+  "slap_bass_1","slap_bass_2","synth_bass_1","synth_bass_2",
+  "violin","viola","cello","contrabass",
+  "tremolo_strings","pizzicato_strings","orchestral_harp","timpani",
+  "string_ensemble_1","string_ensemble_2","synth_strings_1","synth_strings_2",
+  "choir_aahs","voice_oohs","synth_voice","orchestra_hit",
+  "trumpet","trombone","tuba","muted_trumpet",
+  "french_horn","brass_section","synth_brass_1","synth_brass_2",
+  "soprano_sax","alto_sax","tenor_sax","baritone_sax",
+  "oboe","english_horn","bassoon","clarinet",
+  "piccolo","flute","recorder","pan_flute",
+  "blown_bottle","shakuhachi","whistle","ocarina",
+  "lead_1_square","lead_2_sawtooth","lead_3_calliope","lead_4_chiff",
+  "lead_5_charang","lead_6_voice","lead_7_fifths","lead_8_bass_lead",
+  "pad_1_new_age","pad_2_warm","pad_3_polysynth","pad_4_choir",
+  "pad_5_bowed","pad_6_metallic","pad_7_halo","pad_8_sweep",
+  "fx_1_rain","fx_2_soundtrack","fx_3_crystal","fx_4_atmosphere",
+  "fx_5_brightness","fx_6_goblins","fx_7_echoes","fx_8_sci_fi",
+  "sitar","banjo","shamisen","koto",
+  "kalimba","bag_pipe","fiddle","shanai",
+  "tinkle_bell","agogo","steel_drums","woodblock",
+  "taiko_drum","melodic_tom","synth_drum","reverse_cymbal",
+  "guitar_fret_noise","breath_noise","seashore","bird_tweet",
+  "telephone_ring","helicopter","applause","gunshot",
+];
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SFInstrument = { play: (note: number, when: number, opts: { duration: number; gain: number }) => void };
+
 function useMidiPlayer(midiUrl: string | undefined) {
   const [playing, setPlaying] = useState(false);
   const [loadingMidi, setLoadingMidi] = useState(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const schedulerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function stop() {
+    if (schedulerRef.current) { clearInterval(schedulerRef.current); schedulerRef.current = null; }
     audioCtxRef.current?.close();
     audioCtxRef.current = null;
     setPlaying(false);
@@ -99,41 +143,68 @@ function useMidiPlayer(midiUrl: string | undefined) {
 
       const ctx = new AudioContext();
       audioCtxRef.current = ctx;
-      setPlaying(true);
+      await ctx.resume();
 
-      const now = ctx.currentTime + 0.1;
-      let endTime = now;
-
+      // Collect unique instrument key → soundfont name
+      const instKeys = new Map<string, string>();
       midi.tracks.forEach((track) => {
-        track.notes.forEach((note) => {
-          const start = now + note.time;
-          const dur = Math.max(note.duration, 0.05);
-          const freq = 440 * Math.pow(2, (note.midi - 69) / 12);
-
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-
-          osc.type = "sine";
-          osc.frequency.value = freq;
-
-          gain.gain.setValueAtTime(0, start);
-          gain.gain.linearRampToValueAtTime(note.velocity * 0.4, start + 0.01);
-          gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
-
-          osc.start(start);
-          osc.stop(start + dur + 0.05);
-          endTime = Math.max(endTime, start + dur + 0.05);
-        });
+        if (track.instrument.percussion) return;
+        const key = String(track.instrument.number ?? 0);
+        const name = GM_NAMES[track.instrument.number ?? 0] ?? "acoustic_grand_piano";
+        instKeys.set(key, name);
       });
 
-      // Auto-stop when playback finishes
-      const remaining = (endTime - ctx.currentTime) * 1000;
-      setTimeout(() => {
-        if (audioCtxRef.current === ctx) stop();
-      }, remaining + 200);
-    } catch {
+      // Load all soundfonts in parallel
+      const instruments = new Map<string, SFInstrument>();
+      await Promise.all(
+        Array.from(instKeys.entries()).map(async ([key, name]) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const inst = await (Soundfont as any).instrument(ctx, name, { soundfont: "MusyngKite" });
+          instruments.set(key, inst as SFInstrument);
+        })
+      );
+
+      // Flatten & sort all notes with instrument key
+      type NoteEntry = { time: number; duration: number; midi: number; velocity: number; key: string };
+      const notes: NoteEntry[] = [];
+      midi.tracks.forEach((track) => {
+        if (track.instrument.percussion) return;
+        const key = String(track.instrument.number ?? 0);
+        track.notes.forEach((note) => {
+          notes.push({ time: note.time, duration: note.duration, midi: note.midi, velocity: note.velocity, key });
+        });
+      });
+      notes.sort((a, b) => a.time - b.time);
+
+      setPlaying(true);
+      const startedAt = ctx.currentTime + 0.1;
+      let noteIndex = 0;
+      const totalDuration = notes.length > 0 ? notes[notes.length - 1].time + notes[notes.length - 1].duration : 0;
+
+      function scheduleNotes() {
+        if (!audioCtxRef.current) return;
+        const horizon = ctx.currentTime + LOOKAHEAD;
+        while (noteIndex < notes.length) {
+          const note = notes[noteIndex];
+          const startTime = startedAt + note.time;
+          if (startTime > horizon) break;
+          instruments.get(note.key)?.play(note.midi, startTime, {
+            duration: Math.max(note.duration, 0.05),
+            gain: note.velocity * 0.8,
+          });
+          noteIndex++;
+        }
+        if (noteIndex >= notes.length) {
+          if (schedulerRef.current) { clearInterval(schedulerRef.current); schedulerRef.current = null; }
+          const remaining = (startedAt + totalDuration - ctx.currentTime) * 1000;
+          setTimeout(() => { if (audioCtxRef.current === ctx) stop(); }, remaining + 200);
+        }
+      }
+
+      scheduleNotes();
+      schedulerRef.current = setInterval(scheduleNotes, SCHEDULE_INTERVAL);
+    } catch (e) {
+      console.error("[midi] error:", e);
       toast.error("Could not load MIDI file.");
       stop();
     } finally {
@@ -141,8 +212,7 @@ function useMidiPlayer(midiUrl: string | undefined) {
     }
   }
 
-  // Clean up on unmount
-  useEffect(() => () => { audioCtxRef.current?.close(); }, []);
+  useEffect(() => () => { stop(); }, []);
 
   return { playing, loadingMidi, play, stop };
 }
