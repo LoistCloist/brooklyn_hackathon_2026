@@ -34,6 +34,7 @@ export type TutoringRequestStatus = "pending" | "accepted" | "declined";
 export type TutoringRequestDoc = {
    learnerId: string;
    instructorId: string;
+   sessionType?: "solo" | "group";
    weeklySlots: WeeklyTimeSlot[];
    weeks: number;
    message: string;
@@ -45,6 +46,7 @@ export type TutoringEngagementDoc = {
    learnerId: string;
    instructorId: string;
    requestId: string;
+   sessionType?: "solo" | "group";
    weeklySlots: WeeklyTimeSlot[];
    weeks: number;
    meetings: { startAt: Timestamp; endAt: Timestamp }[];
@@ -80,6 +82,7 @@ export async function createTutoringRequest(payload: {
    weeklySlots: WeeklyTimeSlot[];
    weeks: number;
    message: string;
+   sessionType?: "solo" | "group";
 }): Promise<string> {
    const db = getFirestoreDb();
    const msg = payload.message.trim().slice(0, TUTORING_MESSAGE_MAX);
@@ -88,6 +91,7 @@ export async function createTutoringRequest(payload: {
    const ref = await addDoc(collection(db, REQUESTS), {
       learnerId: payload.learnerId,
       instructorId: payload.instructorId,
+      sessionType: payload.sessionType ?? "solo",
       weeklySlots: dedupeWeeklySlots(payload.weeklySlots),
       weeks: payload.weeks,
       message: msg,
@@ -230,6 +234,7 @@ export async function acceptTutoringRequest(requestId: string, instructorId: str
       learnerId: req.learnerId,
       instructorId: req.instructorId,
       requestId,
+      sessionType: req.sessionType ?? "solo",
       weeklySlots: dedupeWeeklySlots(req.weeklySlots),
       weeks: req.weeks,
       meetings,
