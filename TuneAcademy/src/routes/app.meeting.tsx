@@ -111,6 +111,7 @@ function MeetingJoinPage() {
    }, [eng, user]);
 
    const meetLink = meetSess?.meetLink ?? demoMeetUri(engagementId, sessionIndex);
+   const usingGoogleCalendarMeet = meetSess?.conferenceProvider === "google_calendar" || Boolean(meetSess?.googleCalendarEventId);
 
    const meetingWindow = useMemo(() => {
       if (!eng?.meetings[sessionIndex]) return null;
@@ -316,8 +317,9 @@ function MeetingJoinPage() {
                         </Button>
                      </div>
                      <p className="text-xs text-muted-foreground">
-                        Demo mode uses a stable Meet-style room behind this button. Production can swap in a backend-created{" "}
-                        <code className="rounded bg-muted px-1 py-0.5">meetingUri</code>.
+                        {usingGoogleCalendarMeet
+                           ? "This session uses a Google Calendar-created Meet link behind the protected Join button."
+                           : "Demo mode is active until the instructor connects Google Calendar."}
                      </p>
                   </div>
 

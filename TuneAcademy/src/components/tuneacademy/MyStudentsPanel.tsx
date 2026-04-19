@@ -11,7 +11,7 @@ import { subscribeEngagementsForInstructor, type TutoringEngagementDoc } from "@
 import { brandTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
-type LearnerRow = { learnerId: string; fullName: string; email: string; avatarUrl: string };
+type LearnerRow = { learnerId: string; fullName: string; avatarUrl: string };
 
 export function MyStudentsPanel() {
    const { user, userDoc } = useAuth();
@@ -48,12 +48,7 @@ export function MyStudentsPanel() {
       void Promise.all(
          ids.map(async (learnerId) => {
             const u = await getUserDoc(learnerId);
-            return {
-               learnerId,
-               fullName: u?.fullName?.trim() || "Learner",
-               email: u?.email?.trim() || "",
-               avatarUrl: u?.avatarUrl?.trim() || "",
-            } satisfies LearnerRow;
+            return { learnerId, fullName: u?.fullName?.trim() || "Learner", avatarUrl: u?.avatarUrl?.trim() || "" } satisfies LearnerRow;
          }),
       )
          .then((rows) => {
