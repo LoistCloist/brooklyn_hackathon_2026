@@ -129,4 +129,4 @@ TuneAcademy demonstrates link-leakage prevention in the frontend so judges can s
 
 For production, the next step would be moving enforcement into trusted backend code: stricter Firestore rules, backend-created Meet spaces, backend moderation, payment enforcement, and Google Meet event verification where available.
 
-repo bot test.
+repo bot test..
