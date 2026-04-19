@@ -249,7 +249,7 @@ function useMidiPlayer(midiUrl: string | undefined) {
          audioCtxRef.current = ctx;
          await ctx.resume();
 
-         // Collect unique instrument key â†’ soundfont name
+         // Collect unique instrument key → soundfont name
          const instKeys = new Map<string, string>();
          midi.tracks.forEach((track) => {
             if (track.instrument.percussion) return;
@@ -424,9 +424,9 @@ function MidiSection({
         ? (selectedSong.title ?? selectedSong.track_id)
         : null;
    const selectionSub = selectedTrack
-      ? `${selectedTrack.style} Â· ${selectedTrack.tempo} BPM`
+      ? `${selectedTrack.style} · ${selectedTrack.tempo} BPM`
       : selectedSong
-        ? `${selectedSong.artist ?? ""}${selectedSong.tempo_bpm ? ` Â· ${selectedSong.tempo_bpm} BPM` : ""}`
+        ? `${selectedSong.artist ?? ""}${selectedSong.tempo_bpm ? ` · ${selectedSong.tempo_bpm} BPM` : ""}`
         : null;
    const selectionMidiUrl = selectedTrack?.midi_url ?? selectedSong?.midi_url;
 
@@ -470,7 +470,7 @@ function MidiSection({
                      type="text"
                      value={query}
                      onChange={(e) => setQuery(e.target.value)}
-                     placeholder="Search by title or artistâ€¦"
+                     placeholder="Search by title or artist…"
                      className="w-full rounded-lg border border-hairline bg-transparent px-4 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/30"
                   />
                )}
@@ -510,7 +510,7 @@ function MidiSection({
                                    {track.progression} - {track.key}
                                 </p>
                                 <p className="mt-0.5 text-xs text-muted-foreground capitalize">
-                                   {track.style} Â· {track.tempo} BPM
+                                   {track.style} · {track.tempo} BPM
                                 </p>
                              </div>
                              <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
@@ -535,8 +535,8 @@ function MidiSection({
                                 <p className="text-sm font-semibold">{song.title ?? song.track_id}</p>
                                 <p className="mt-0.5 text-xs text-muted-foreground">
                                    {song.artist ?? "Unknown artist"}
-                                   {song.tempo_bpm ? ` Â· ${song.tempo_bpm} BPM` : ""}
-                                   {song.duration_seconds ? ` Â· ${fmtDuration(song.duration_seconds)}` : ""}
+                                   {song.tempo_bpm ? ` · ${song.tempo_bpm} BPM` : ""}
+                                   {song.duration_seconds ? ` · ${fmtDuration(song.duration_seconds)}` : ""}
                                 </p>
                              </div>
                              <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
@@ -813,7 +813,7 @@ function AnalyzeTab() {
                      type="text"
                      value={name}
                      onChange={(e) => setName(e.target.value)}
-                     placeholder={`${c.instrument} takeâ€¦`}
+                     placeholder={`${c.instrument} take…`}
                      maxLength={60}
                      className="w-full rounded-lg border border-hairline bg-transparent px-4 py-3 text-sm font-semibold placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/30"
                   />

@@ -30,7 +30,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/app/instructors/$id")({
-   head: () => ({ meta: [{ title: "Instructor â€” TuneAcademy" }] }),
+   head: () => ({ meta: [{ title: "Instructor — TuneAcademy" }] }),
    component: InstructorProfile,
 });
 
@@ -142,7 +142,7 @@ function InstructorProfile() {
          return;
       }
       if (weeks < 1 || weeks > maxWeeksForInstructor) {
-         toast.error(`Choose 1â€“${maxWeeksForInstructor} weeks.`);
+         toast.error(`Choose 1–${maxWeeksForInstructor} weeks.`);
          return;
       }
       setRequestSending(true);
@@ -203,7 +203,7 @@ function InstructorProfile() {
                   <ArrowLeft className="h-4 w-4" />
                </button>
             </header>
-            <div className="p-8 text-center text-sm text-muted-foreground">Loadingâ€¦</div>
+            <div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>
          </AppShell>
       );
    }
@@ -314,7 +314,7 @@ function InstructorProfile() {
                   {sent ? (
                      <div className="py-12 text-center">
                         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-foreground">
-                           âœ“
+                           ✓
                         </div>
                         <h3 className="text-lg font-semibold">Request sent</h3>
                         <p className="mt-1 text-sm text-muted-foreground">{i.fullName} will review your proposed schedule.</p>
@@ -487,7 +487,7 @@ function InstructorProfile() {
                            value={requestMessage}
                            maxLength={TUTORING_MESSAGE_MAX}
                            onChange={(e) => setRequestMessage(e.target.value)}
-                           placeholder="Goals, repertoire, or anything they should knowâ€¦"
+                           placeholder="Goals, repertoire, or anything they should know…"
                            className="w-full resize-none rounded-xl border border-hairline bg-background p-3 text-sm outline-none focus:border-foreground"
                         />
                         <p className="mt-1 text-right text-[10px] text-muted-foreground">
@@ -498,7 +498,7 @@ function InstructorProfile() {
                            disabled={requestSending || !selectedSlots.length || offeredSlots.length === 0 || weeks < 1}
                            onClick={() => void sendServiceRequest()}
                         >
-                           {requestSending ? "Sendingâ€¦" : "Send request"}
+                           {requestSending ? "Sending…" : "Send request"}
                         </Pill>
                      </>
                   )}
@@ -518,7 +518,7 @@ function InstructorProfile() {
                      id="instructor-dm"
                      value={dmText}
                      onChange={(e) => setDmText(e.target.value.slice(0, 2000))}
-                     placeholder={`Hi ${i.fullName.split(" ")[0] ?? "there"}, I'd like to â€¦`}
+                     placeholder={`Hi ${i.fullName.split(" ")[0] ?? "there"}, I'd like to …`}
                      rows={4}
                      disabled={dmSending}
                      className="resize-none"
@@ -529,7 +529,7 @@ function InstructorProfile() {
                         Cancel
                      </Button>
                      <Button type="button" className="flex-1" disabled={dmSending || !dmText.trim()} onClick={() => void sendDm()}>
-                        {dmSending ? "Sendingâ€¦" : "Send"}
+                        {dmSending ? "Sending…" : "Send"}
                      </Button>
                   </div>
                </Sheet>
