@@ -32,6 +32,11 @@ function redirectAppOrigin(): string {
   return process.env.APP_ORIGIN?.trim() || "http://localhost:5173";
 }
 
+function optionalEnv(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value || undefined;
+}
+
 function oauthConfig(): { clientId: string; clientSecret: string; redirectUri: string } {
   return {
     clientId: requiredEnv("GOOGLE_OAUTH_CLIENT_ID"),
@@ -335,6 +340,56 @@ export const createGoogleMeetLinksForEngagement = onCall({ region: REGION }, asy
   }
 
   return { created, skipped };
+});
+
+export const synthesizeTuneCoachSpeech = onCall({ region: REGION }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in before using TuneCoach audio.");
+
+  const text = String((request.data as { text?: unknown })?.text ?? "").trim();
+  if (!text) throw new HttpsError("invalid-argument", "Missing text to speak.");
+  if (text.length > 1400) {
+    throw new HttpsError("invalid-argument", "TuneCoach audio is limited to 1400 characters.");
+  }
+
+  const apiKey = requiredEnv("ELEVENLABS_API_KEY");
+  const voiceId =
+    optionalEnv("ELEVENLABS_TTS_VOICE_ID") ||
+    optionalEnv("ELEVENLABS_VOICE_ID") ||
+    "JBFqnCBsd6RMkjVDRZzb";
+  const modelId = optionalEnv("ELEVENLABS_TTS_MODEL_ID") || "eleven_multilingual_v2";
+
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
+    voiceId,
+  )}?output_format=mp3_44100_128`;
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "xi-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      text,
+      model_id: modelId,
+    }),
+  });
+
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    throw new HttpsError(
+      "internal",
+      detail
+        ? `ElevenLabs TTS failed: ${detail.slice(0, 300)}`
+        : `ElevenLabs TTS failed with ${resp.status}.`,
+    );
+  }
+
+  const audioBase64 = Buffer.from(await resp.arrayBuffer()).toString("base64");
+  return {
+    audioBase64,
+    mimeType: "audio/mpeg",
+  };
 });
 
 export const analyzeRecording = onObjectFinalized({ region: REGION }, async (event) => {

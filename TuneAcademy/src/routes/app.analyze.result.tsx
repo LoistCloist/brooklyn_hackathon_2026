@@ -10,11 +10,12 @@ import {
   type Conversation as ElevenLabsConversation,
   type PartialOptions,
 } from "@elevenlabs/react";
-import { ArrowLeft, ArrowRight, Mic, Loader2, Send } from "lucide-react";
+import { ArrowLeft, ArrowRight, Mic, Loader2, Send, Volume2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
+import { synthesizeTuneCoachSpeech } from "@/lib/tuneCoachSpeech";
 
 const DEFAULT_TUNE_COACH_AGENT_ID = "agent_4301kpj8w620ectvz76fns3ckyj3";
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID?.trim() || DEFAULT_TUNE_COACH_AGENT_ID;
@@ -461,14 +462,34 @@ function buildReportSummary(report: ReportData): string {
 function TuneCoachCard({ report }: { report: ReportData }) {
   const [input, setInput] = useState("");
   const [listening, setListening] = useState(false);
+  const [speakingKey, setSpeakingKey] = useState<string | null>(null);
+  const [speechError, setSpeechError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const speechRequestRef = useRef(0);
   const reportSummary = buildReportSummary(report);
 
   const { messages, connected, connecting, error, connect, send } = useTextChat(
     AGENT_ID,
     reportSummary,
   );
+
+  const clearSpeech = useCallback(() => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+    setSpeakingKey(null);
+  }, []);
+
+  const stopSpeech = useCallback(() => {
+    speechRequestRef.current += 1;
+    clearSpeech();
+  }, [clearSpeech]);
 
   useEffect(() => {
     void connect();
@@ -477,6 +498,47 @@ function TuneCoachCard({ report }: { report: ReportData }) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => stopSpeech, [stopSpeech]);
+
+  const playAgentMessage = async (text: string, key: string) => {
+    if (speakingKey === key) {
+      stopSpeech();
+      return;
+    }
+
+    setSpeechError(null);
+    stopSpeech();
+    const requestId = speechRequestRef.current;
+    setSpeakingKey(key);
+
+    try {
+      const speech = await synthesizeTuneCoachSpeech(text);
+      if (speechRequestRef.current !== requestId) return;
+
+      const bytes = Uint8Array.from(atob(speech.audioBase64), (char) => char.charCodeAt(0));
+      const blob = new Blob([bytes], { type: speech.mimeType || "audio/mpeg" });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+
+      audioRef.current = audio;
+      audioUrlRef.current = url;
+      audio.onended = () => {
+        if (speechRequestRef.current === requestId) clearSpeech();
+      };
+      audio.onerror = () => {
+        if (speechRequestRef.current !== requestId) return;
+        setSpeechError("TuneCoach audio could not be played.");
+        clearSpeech();
+      };
+
+      await audio.play();
+    } catch (e) {
+      if (speechRequestRef.current !== requestId) return;
+      setSpeechError(e instanceof Error ? e.message : "TuneCoach audio could not be generated.");
+      clearSpeech();
+    }
+  };
 
   const handleSend = async () => {
     const text = input.trim();
@@ -550,25 +612,50 @@ function TuneCoachCard({ report }: { report: ReportData }) {
             {error}
           </div>
         )}
+        {speechError && (
+          <div className="rounded-lg border border-hairline px-3 py-2 text-xs text-muted-foreground">
+            {speechError}
+          </div>
+        )}
         {!connecting && !error && messages.length === 0 && (
           <p className="py-6 text-center text-xs text-muted-foreground">
             Preparing feedback from your report...
           </p>
         )}
-        {messages.map((m, i) => (
-          <div
-            key={`${m.role}-${i}`}
-            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <span
-              className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
-                m.role === "user" ? "bg-foreground text-background" : "bg-muted text-foreground"
-              }`}
+        {messages.map((m, i) => {
+          const messageKey = `${m.role}-${i}`;
+          const isSpeaking = speakingKey === messageKey;
+
+          return (
+            <div
+              key={messageKey}
+              className={`flex items-end gap-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}
             >
-              {m.text}
-            </span>
-          </div>
-        ))}
+              <span
+                className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                  m.role === "user" ? "bg-foreground text-background" : "bg-muted text-foreground"
+                }`}
+              >
+                {m.text}
+              </span>
+              {m.role === "agent" && (
+                <button
+                  type="button"
+                  onClick={() => void playAgentMessage(m.text, messageKey)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-hairline text-foreground transition-colors disabled:opacity-40"
+                  aria-label={isSpeaking ? "Stop TuneCoach audio" : "Speak TuneCoach response"}
+                  title={isSpeaking ? "Stop audio" : "Speak response"}
+                >
+                  {isSpeaking ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Volume2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              )}
+            </div>
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 

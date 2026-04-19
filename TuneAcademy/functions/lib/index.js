@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.analyzeRecording = exports.createGoogleMeetLinksForEngagement = exports.getGoogleCalendarConnectionStatus = exports.googleCalendarOAuthCallback = exports.createGoogleCalendarAuthUrl = void 0;
+exports.analyzeRecording = exports.synthesizeTuneCoachSpeech = exports.createGoogleMeetLinksForEngagement = exports.getGoogleCalendarConnectionStatus = exports.googleCalendarOAuthCallback = exports.createGoogleCalendarAuthUrl = void 0;
 const crypto_1 = require("crypto");
 const storage_1 = require("firebase-functions/v2/storage");
 const https_1 = require("firebase-functions/v2/https");
@@ -21,6 +21,10 @@ function requiredEnv(name) {
 }
 function redirectAppOrigin() {
     return process.env.APP_ORIGIN?.trim() || "http://localhost:5173";
+}
+function optionalEnv(name) {
+    const value = process.env[name]?.trim();
+    return value || undefined;
 }
 function oauthConfig() {
     return {
@@ -254,6 +258,45 @@ exports.createGoogleMeetLinksForEngagement = (0, https_1.onCall)({ region: REGIO
         created++;
     }
     return { created, skipped };
+});
+exports.synthesizeTuneCoachSpeech = (0, https_1.onCall)({ region: REGION }, async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid)
+        throw new https_1.HttpsError("unauthenticated", "Sign in before using TuneCoach audio.");
+    const text = String(request.data?.text ?? "").trim();
+    if (!text)
+        throw new https_1.HttpsError("invalid-argument", "Missing text to speak.");
+    if (text.length > 1400) {
+        throw new https_1.HttpsError("invalid-argument", "TuneCoach audio is limited to 1400 characters.");
+    }
+    const apiKey = requiredEnv("ELEVENLABS_API_KEY");
+    const voiceId = optionalEnv("ELEVENLABS_TTS_VOICE_ID") ||
+        optionalEnv("ELEVENLABS_VOICE_ID") ||
+        "JBFqnCBsd6RMkjVDRZzb";
+    const modelId = optionalEnv("ELEVENLABS_TTS_MODEL_ID") || "eleven_multilingual_v2";
+    const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
+    const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "xi-api-key": apiKey,
+        },
+        body: JSON.stringify({
+            text,
+            model_id: modelId,
+        }),
+    });
+    if (!resp.ok) {
+        const detail = await resp.text().catch(() => "");
+        throw new https_1.HttpsError("internal", detail
+            ? `ElevenLabs TTS failed: ${detail.slice(0, 300)}`
+            : `ElevenLabs TTS failed with ${resp.status}.`);
+    }
+    const audioBase64 = Buffer.from(await resp.arrayBuffer()).toString("base64");
+    return {
+        audioBase64,
+        mimeType: "audio/mpeg",
+    };
 });
 exports.analyzeRecording = (0, storage_1.onObjectFinalized)({ region: REGION }, async (event) => {
     const name = event.data.name;
