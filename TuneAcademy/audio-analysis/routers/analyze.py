@@ -174,7 +174,7 @@ async def analyze(
         raise HTTPException(status_code=400, detail="Audio file is empty")
 
     try:
-        result = _analyze_audio(wav_bytes, instrument or "guitar")
+        result = _analyze_audio(wav_bytes, instrument or "voice")
 
         if reference_id:
             import reference_store
