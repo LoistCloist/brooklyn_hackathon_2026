@@ -51,6 +51,8 @@ export type InstructorFirestoreDoc = {
   experienceYears: number;
   nationality?: string;
   specialties: string[];
+  /** Skill levels the instructor is interested in teaching, e.g. ["beginner", "intermediate"]. */
+  teachingLevels?: string[];
   bio: string;
   hourlyRate: number;
   rating: number;
@@ -280,6 +282,7 @@ export async function saveInstructorOnboarding(
     experienceYears: number;
     nationality: string;
     specialties: string[];
+    teachingLevels: string[];
     bio: string;
     hourlyRate: number;
     groupHourlyRate: number;
@@ -297,6 +300,7 @@ export async function saveInstructorOnboarding(
     experienceYears: payload.experienceYears,
     nationality: payload.nationality,
     specialties: payload.specialties,
+    teachingLevels: payload.teachingLevels,
     bio: payload.bio,
     hourlyRate: payload.hourlyRate,
     groupHourlyRate: payload.groupHourlyRate,
@@ -316,7 +320,7 @@ export async function saveInstructorOnboarding(
 
 export async function updateInstructorProfileBasics(
   uid: string,
-  payload: { hourlyRate: number; nationality: string; experienceYears: number },
+  payload: { hourlyRate: number; nationality: string; experienceYears: number; teachingLevels?: string[]; specialties?: string[] },
 ): Promise<void> {
   const rate = Number.isFinite(payload.hourlyRate)
     ? Math.max(0, Math.floor(payload.hourlyRate))
@@ -324,11 +328,14 @@ export async function updateInstructorProfileBasics(
   const years = Number.isFinite(payload.experienceYears)
     ? Math.min(80, Math.max(0, Math.floor(payload.experienceYears)))
     : 0;
-  await updateDoc(doc(getFirestoreDb(), "instructors", uid), {
+  const data: Record<string, unknown> = {
     hourlyRate: rate,
     nationality: payload.nationality.trim(),
     experienceYears: years,
-  });
+  };
+  if (payload.teachingLevels !== undefined) data.teachingLevels = payload.teachingLevels;
+  if (payload.specialties !== undefined) data.specialties = payload.specialties;
+  await updateDoc(doc(getFirestoreDb(), "instructors", uid), data);
 }
 
 export async function updateInstructorScheduleSettings(

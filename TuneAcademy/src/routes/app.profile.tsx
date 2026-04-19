@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { AppShell } from "@/components/tuneacademy/AppShell";
 import { Avatar } from "@/components/tuneacademy/Avatar";
+import { Chip } from "@/components/tuneacademy/Chip";
 import { Pill } from "@/components/tuneacademy/Pill";
 import {
    AlertDialog,
@@ -170,7 +171,7 @@ function ProfileTab() {
    const [instructorSnapReady, setInstructorSnapReady] = useState(false);
 
    const [instructorBasicsEditing, setInstructorBasicsEditing] = useState(false);
-   const [instructorBasicsDraft, setInstructorBasicsDraft] = useState({ hourlyRate: "", nationality: "", experienceYears: "" });
+   const [instructorBasicsDraft, setInstructorBasicsDraft] = useState({ hourlyRate: "", nationality: "", experienceYears: "", teachingLevels: [] as string[] });
    const [instructorBasicsSaving, setInstructorBasicsSaving] = useState(false);
 
    useEffect(() => {
@@ -217,6 +218,7 @@ function ProfileTab() {
          hourlyRate: String(instructorDoc.hourlyRate ?? 0),
          nationality: instructorDoc.nationality ?? "",
          experienceYears: String(instructorDoc.experienceYears ?? 0),
+         teachingLevels: instructorDoc.teachingLevels ?? [],
       });
    }, [instructorDoc, instructorBasicsEditing]);
 
@@ -364,6 +366,7 @@ function ProfileTab() {
             hourlyRate: rate,
             nationality: instructorBasicsDraft.nationality,
             experienceYears: years,
+            teachingLevels: instructorBasicsDraft.teachingLevels,
          });
          toast.success("Profile updated");
          setInstructorBasicsEditing(false);
@@ -440,6 +443,7 @@ function ProfileTab() {
                               hourlyRate: String(instructorDoc.hourlyRate ?? 0),
                               nationality: instructorDoc.nationality ?? "",
                               experienceYears: String(instructorDoc.experienceYears ?? 0),
+                              teachingLevels: instructorDoc.teachingLevels ?? [],
                            });
                         }
                         setInstructorBasicsEditing(true);
@@ -530,6 +534,24 @@ function ProfileTab() {
                               inputMode="numeric"
                               className="h-10 w-full max-w-xs rounded-lg border border-[#fffdf5]/15 bg-[#0b1510]/70 px-3 text-sm font-semibold text-[#fffdf5] outline-none focus:border-[#ffd666]/50"
                            />
+                           <label className="block text-[11px] font-bold uppercase tracking-widest text-[#e8f4df]/45">Teaching levels</label>
+                           <div className="flex flex-wrap gap-2">
+                              {(["Beginner", "Intermediate", "Advanced"] as const).map((level) => {
+                                 const slug = level.toLowerCase();
+                                 const active = instructorBasicsDraft.teachingLevels.includes(slug);
+                                 return (
+                                    <Chip key={slug} active={active}
+                                       onClick={() => setInstructorBasicsDraft((d) => ({
+                                          ...d,
+                                          teachingLevels: active
+                                             ? d.teachingLevels.filter((x) => x !== slug)
+                                             : [...d.teachingLevels, slug],
+                                       }))}>
+                                       {level}
+                                    </Chip>
+                                 );
+                              })}
+                           </div>
                            <div className="flex flex-wrap gap-2 pt-1">
                               <Button
                                  type="button"
@@ -552,6 +574,7 @@ function ProfileTab() {
                                           hourlyRate: String(instructorDoc.hourlyRate ?? 0),
                                           nationality: instructorDoc.nationality ?? "",
                                           experienceYears: String(instructorDoc.experienceYears ?? 0),
+                                          teachingLevels: instructorDoc.teachingLevels ?? [],
                                        });
                                     }
                                     setInstructorBasicsEditing(false);
@@ -840,14 +863,24 @@ function ProfileTab() {
                <div className="flex flex-wrap gap-2">
                   {isInstructor ? (
                      instructorDoc?.specialties?.length ? (
-                        instructorDoc.specialties.map((slug) => (
-                           <span
-                              key={slug}
-                              className="rounded-full border border-[#a6eee3]/30 bg-[#a6eee3]/10 px-3 py-1 text-xs font-bold text-[#a6eee3]"
-                           >
-                              {formatSpecialtyLabel(slug)}
-                           </span>
-                        ))
+                        <>
+                           {instructorDoc.specialties.map((slug) => (
+                              <span
+                                 key={slug}
+                                 className="rounded-full border border-[#a6eee3]/30 bg-[#a6eee3]/10 px-3 py-1 text-xs font-bold text-[#a6eee3]"
+                              >
+                                 {formatSpecialtyLabel(slug)}
+                              </span>
+                           ))}
+                           {(instructorDoc.teachingLevels ?? []).map((lvl) => (
+                              <span
+                                 key={lvl}
+                                 className="rounded-full border border-blue-400/30 bg-blue-400/10 px-3 py-1 text-xs font-bold text-blue-400"
+                              >
+                                 {formatSpecialtyLabel(lvl)}
+                              </span>
+                           ))}
+                        </>
                      ) : (
                         <p className="text-sm text-[#e8f4df]/55">No specialties listed.</p>
                      )

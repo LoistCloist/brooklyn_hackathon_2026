@@ -27,6 +27,7 @@ export const Route = createFileRoute("/onboarding")({
 const SPECIALTIES = ["Voice", "Guitar", "Piano", "Saxophone", "Violin", "Drums", "Bass", "Other"];
 const INSTRUMENTS = ["Voice", "Guitar", "Piano", "Saxophone", "Violin", "Drums", "Bass", "Other"];
 const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
+const TEACHING_LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
 const SESSION_TYPES = [
   { value: "solo", label: "1-on-1", description: "Private sessions only" },
   { value: "group", label: "Group (3:1)", description: "Small group sessions only" },
@@ -55,6 +56,7 @@ function Onboarding() {
   const [groupRate, setGroupRate] = useState("");
   const [sessionType, setSessionType] = useState<SessionType | "">("");
   const [specs, setSpecs] = useState<string[]>([]);
+  const [instructorTeachingLevels, setInstructorTeachingLevels] = useState<string[]>([]);
   const [bio, setBio] = useState("");
   const [weeklyAvailability, setWeeklyAvailability] = useState<WeeklyTimeSlot[]>([]);
   const [groupWeeklyAvailability, setGroupWeeklyAvailability] = useState<WeeklyTimeSlot[]>([]);
@@ -144,6 +146,7 @@ function Onboarding() {
     if (!nationality.trim()) { toast.error("Choose your nationality."); return; }
     if (!sessionType) { toast.error("Select your session type."); return; }
     if (specs.length === 0) { toast.error("Pick at least one specialty."); return; }
+    if (instructorTeachingLevels.length === 0) { toast.error("Pick at least one teaching level."); return; }
     if (!bio.trim()) { toast.error("Add a short bio."); return; }
     if (weeklyAvailability.length === 0) { toast.error("Choose at least one available hour."); return; }
     const maxW = Number.parseInt(maxTutoringWeeks, 10);
@@ -159,6 +162,7 @@ function Onboarding() {
       await saveInstructorOnboarding(u.uid, {
         fullName: name.trim(), avatarUrl, age: ageN, experienceYears: yrsN,
         nationality: nationality.trim(), specialties: specs.map(specialtyToSlug),
+        teachingLevels: instructorTeachingLevels.map((l) => l.toLowerCase()),
         bio: bio.trim(), hourlyRate,
         groupHourlyRate: (sessionType === "group" || sessionType === "both") ? groupHourlyRate : 0,
         sessionType: sessionType as SessionType,
@@ -194,6 +198,7 @@ function Onboarding() {
         if (!Number.isFinite(hourlyRate) || hourlyRate < 0) { toast.error("Enter a valid rate."); return; }
         if (!sessionType) { toast.error("Select your session type."); return; }
         if (specs.length === 0) { toast.error("Pick at least one specialty."); return; }
+        if (instructorTeachingLevels.length === 0) { toast.error("Pick at least one teaching level."); return; }
         setStep(2); return;
       }
       if (step === 2) {
@@ -342,6 +347,14 @@ function Onboarding() {
                 const active = specs.includes(s);
                 return <Chip key={s} active={active}
                   onClick={() => setSpecs((v) => active ? v.filter((x) => x !== s) : [...v, s])}>{s}</Chip>;
+              })}
+            </div>
+            <p className="mt-6 mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">Teaching levels *</p>
+            <div className="flex flex-wrap gap-2">
+              {TEACHING_LEVELS.map((level) => {
+                const active = instructorTeachingLevels.includes(level);
+                return <Chip key={level} active={active}
+                  onClick={() => setInstructorTeachingLevels((v) => active ? v.filter((x) => x !== level) : [...v, level])}>{level}</Chip>;
               })}
             </div>
           </div>

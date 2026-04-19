@@ -227,6 +227,14 @@ function InstructorProfile() {
               {formatSpecialtyLabel(s)}
             </span>
           ))}
+          {(i.teachingLevels ?? []).map((lvl: string) => (
+            <span
+              key={lvl}
+              className="rounded-full border border-blue-400/40 bg-blue-400/10 px-2.5 py-0.5 text-[10px] uppercase tracking-widest text-blue-400"
+            >
+              {formatSpecialtyLabel(lvl)}
+            </span>
+          ))}
         </div>
         <p className="mt-2 text-xs font-medium">
           {i.hourlyRate === 0 ? "Free first lesson" : `$${i.hourlyRate}/hr`}
