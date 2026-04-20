@@ -11,6 +11,28 @@ router = APIRouter(tags=["analyze"])
 _WEAK_THRESHOLD = 65
 _SR = 44100
 
+_BASE_WEIGHTS = {
+    "pitch_centre": 0.20,
+    "pitch_stability": 0.25,
+    "rhythm": 0.25,
+    "tone_quality": 0.20,
+    "note_attack": 0.10,
+}
+
+_PIANO_WEIGHTS = {
+    "pitch_centre": 0.20,
+    "pitch_stability": 0.20,
+    "rhythm": 0.35,
+    "tone_quality": 0.25,
+}
+
+_REFERENCE_WEIGHTS = {
+    "note_accuracy": 0.40,
+    "rhythm": 0.30,
+    "tone_quality": 0.20,
+    "pitch_stability": 0.10,
+}
+
 _WEAKNESS_MESSAGES = {
     "pitch_centre": "Pitch accuracy is low — focus on tuning and hitting target notes cleanly.",
     "pitch_stability": "Pitch wavers during sustained notes — practice long-tone exercises to improve control.",
@@ -18,6 +40,43 @@ _WEAKNESS_MESSAGES = {
     "tone_quality": "Tone sounds noisy or unclear — check instrument setup and pick/bow technique.",
     "note_attack": "Note attacks are soft or unclear — work on consistent, decisive note starts.",
 }
+
+
+_WEAKNESS_MESSAGES["note_accuracy"] = (
+    "Note accuracy is low - slow the passage down and focus on matching the reference pitches."
+)
+
+
+def _is_piano(instrument: str) -> bool:
+    return instrument.strip().lower() == "piano"
+
+
+def _weighted_score(scores: dict[str, int], weights: dict[str, float]) -> int:
+    available = {key: weight for key, weight in weights.items() if key in scores}
+    total_weight = sum(available.values())
+    if total_weight <= 0:
+        return int(round(sum(scores.values()) / len(scores))) if scores else 0
+    weighted = sum(scores[key] * weight for key, weight in available.items()) / total_weight
+    return int(round(max(0, min(100, weighted))))
+
+
+def _overall_score(scores: dict[str, int], instrument: str) -> int:
+    if "note_accuracy" in scores:
+        return _weighted_score(scores, _REFERENCE_WEIGHTS)
+    if _is_piano(instrument):
+        return _weighted_score(scores, _PIANO_WEIGHTS)
+    return _weighted_score(scores, _BASE_WEIGHTS)
+
+
+def _weaknesses(scores: dict[str, int], instrument: str) -> list[str]:
+    ignored = {"note_attack"} if _is_piano(instrument) else set()
+    if "note_accuracy" in scores:
+        ignored.update({"note_attack", "pitch_centre"})
+    return [
+        msg
+        for dim, msg in _WEAKNESS_MESSAGES.items()
+        if dim in scores and dim not in ignored and scores[dim] < _WEAK_THRESHOLD
+    ]
 
 
 def _load_audio(wav_bytes: bytes):
@@ -147,14 +206,11 @@ def _analyze_audio(wav_bytes: bytes, instrument: str) -> dict:
         "note_attack": _note_attack_score(audio),
     }
 
-    overall = int(round(sum(scores.values()) / len(scores)))
-    weaknesses = [msg for dim, msg in _WEAKNESS_MESSAGES.items() if scores[dim] < _WEAK_THRESHOLD]
-
     return {
         "instrument": instrument,
-        "overall_score": overall,
+        "overall_score": _overall_score(scores, instrument),
         "dimension_scores": scores,
-        "weaknesses": weaknesses,
+        "weaknesses": _weaknesses(scores, instrument),
     }
 
 
@@ -187,8 +243,10 @@ async def analyze(
                     "reference_id": reference_id,
                     **comparison.__dict__,
                 }
+                result["dimension_scores"]["note_accuracy"] = comparison.note_accuracy
                 result["dimension_scores"]["rhythm"] = comparison.timing_accuracy
-                result["overall_score"] = int(round(sum(result["dimension_scores"].values()) / len(result["dimension_scores"])))
+                result["overall_score"] = _overall_score(result["dimension_scores"], instrument or "voice")
+                result["weaknesses"] = _weaknesses(result["dimension_scores"], instrument or "voice")
             except KeyError as exc:
                 print(f"[analyze] reference track not found, skipping comparison: {exc}")
                 result["comparison_error"] = str(exc)

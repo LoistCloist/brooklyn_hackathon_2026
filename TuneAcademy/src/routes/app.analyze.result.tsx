@@ -5,7 +5,6 @@ import { Avatar } from "@/components/tuneacademy/Avatar";
 import { Card } from "@/components/tuneacademy/Card";
 import { Pill } from "@/components/tuneacademy/Pill";
 import { ScoreBar } from "@/components/tuneacademy/ScoreBar";
-import { dimensionLabels } from "@/lib/mockData";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFirestoreUserDoc } from "@/hooks/useFirestoreUserDoc";
 import {
@@ -36,7 +35,8 @@ You receive a TuneAcademy analysis report generated from Essentia audio features
 
 Report interpretation:
 - Scores are 0-100. Lower scores are the highest-priority practice targets.
-- dimensionScores include pitch_centre, pitch_stability, rhythm, tone_quality, and note_attack.
+- dimensionScores may include note_accuracy, pitch_centre, pitch_stability, rhythm, tone_quality, and note_attack.
+- When note_accuracy is present, treat it as the primary pitch correctness metric.
 - comparison.note_accuracy measures how closely the learner matched reference pitches.
 - comparison.timing_accuracy measures timing alignment against the reference.
 - comparison.missed_notes and comparison.extra_notes are counts from the reference comparison.
@@ -373,6 +373,30 @@ function normalizeComparison(value: unknown): ReportComparison | undefined {
   return Object.keys(record).length ? (record as ReportComparison) : undefined;
 }
 
+type DimensionRow = { key: string; label: string };
+
+const REFERENCE_DIMENSIONS: DimensionRow[] = [
+  { key: "note_accuracy", label: "Note Accuracy" },
+  { key: "rhythm", label: "Timing" },
+  { key: "pitch_stability", label: "Pitch Stability" },
+  { key: "tone_quality", label: "Tone Clarity" },
+];
+
+const BASE_DIMENSIONS: DimensionRow[] = [
+  { key: "pitch_centre", label: "Pitch Confidence" },
+  { key: "pitch_stability", label: "Pitch Stability" },
+  { key: "rhythm", label: "Timing" },
+  { key: "tone_quality", label: "Tone Clarity" },
+  { key: "note_attack", label: "Note Attack" },
+];
+
+function getDimensionRows(report: ReportData): DimensionRow[] {
+  if (typeof report.dimensionScores.note_accuracy === "number") {
+    return REFERENCE_DIMENSIONS.filter((d) => typeof report.dimensionScores[d.key] === "number");
+  }
+  return BASE_DIMENSIONS.filter((d) => typeof report.dimensionScores[d.key] === "number");
+}
+
 function ResultPage() {
   const nav = useNavigate();
   const { reportId } = Route.useSearch();
@@ -420,6 +444,7 @@ function ResultPage() {
   }, [reportId]);
 
   const score = useCount(report?.overallScore ?? 0);
+  const dimensionRows = report ? getDimensionRows(report) : [];
 
   if (loading) {
     return (
@@ -477,7 +502,7 @@ function ResultPage() {
       <section className="px-5 pt-8">
         <h2 className="mb-3 text-sm font-semibold tracking-tight">By dimension</h2>
         <Card className="space-y-4 p-5">
-          {dimensionLabels.map((d) => (
+          {dimensionRows.map((d) => (
             <ScoreBar
               key={d.key}
               label={d.label}

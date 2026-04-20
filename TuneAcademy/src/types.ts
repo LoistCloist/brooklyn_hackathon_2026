@@ -53,6 +53,7 @@ export interface AnalysisReport {
   overallScore?: number;
   overall_score?: number;
   dimensionScores?: {
+    note_accuracy?: number;
     pitch_centre: number;
     pitch_stability: number;
     rhythm: number;
@@ -60,6 +61,7 @@ export interface AnalysisReport {
     note_attack: number;
   };
   dimension_scores?: {
+    note_accuracy?: number;
     pitch_centre: number;
     pitch_stability: number;
     rhythm: number;

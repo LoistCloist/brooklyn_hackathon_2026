@@ -1,6 +1,7 @@
 export type Instrument = "Voice" | "Guitar" | "Piano" | "Saxophone" | "Violin" | "Drums" | "Bass";
 
 export type DimensionScores = { 
+  note_accuracy?: number;
   pitch_centre: number;
   pitch_stability: number;
   rhythm: number;

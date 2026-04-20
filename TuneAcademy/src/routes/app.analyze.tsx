@@ -621,7 +621,15 @@ function AnalyzeTab() {
 
       let stream: MediaStream;
       try {
-         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+         stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+               echoCancellation: false,
+               noiseSuppression: false,
+               autoGainControl: false,
+               channelCount: 1,
+            },
+            video: false,
+         });
       } catch {
          setMicError("Microphone access denied. Allow mic permission and try again.");
          return;
